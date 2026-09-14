@@ -35,7 +35,7 @@ An AI-assisted analysis interface is planned for the application.
 
 The goal is to allow users to ask questions about the available measurement data using natural language.
 
-Example:
+**Example:**
 
 > "Analysiere die Farbentwicklung von BA Nr. 123456 im letzten Jahr."
 
@@ -76,10 +76,13 @@ lib/
 
 assets/
 └── QS_FakeDaten_mit_Bezug.csv
-Architecture
+```
+
+## Architecture
 
 The current prototype follows a simple Flutter application structure:
 
+```text
 Measurement Data
        │
        ▼
@@ -90,9 +93,11 @@ Measurement Data
        ├── Messungsdetails
        │
        └── Analyse
+```
 
 A future version could extend the architecture with a backend and AI integration:
 
+```text
 Data Source
     │
     ▼
@@ -105,7 +110,9 @@ Flutter App       AI Analysis
     └───────┬───────┘
             ▼
          QS User
-Development
+```
+
+## Development
 
 This project is currently under active development.
 
@@ -113,32 +120,39 @@ The application is being developed incrementally, with new functionality being a
 
 Git is used for version control and to document the development history of the project.
 
-AI-Assisted Development
+## AI-Assisted Development
 
-AI tools are used as development assistance, particularly for code generation, debugging, troubleshooting and exploring possible implementation approaches.
+AI tools are used as development assistance, particularly for:
+
+- Code generation
+- Debugging
+- Troubleshooting
+- Exploring possible implementation approaches
 
 The application concept, requirements, implementation decisions, integration, testing and validation are carried out as part of the development process.
 
-Roadmap
- Initial Flutter project
- Measurement data prototype
- Measurement overview
- Measurement details
- Initial analysis functionality
- Improve Analyse page
- Add advanced trend analysis
- Develop Frag AI prototype
- Add AI-assisted data analysis
- Evaluate backend/data-source integration
- Evaluate possible integration with existing QS data systems
-Project Status
+## Roadmap
 
-Status: Prototype / Active Development
+- [x] Initial Flutter project
+- [x] Measurement data prototype
+- [x] Measurement overview
+- [x] Measurement details
+- [x] Initial analysis functionality
+- [ ] Improve Analyse page
+- [ ] Add advanced trend analysis
+- [ ] Develop Frag AI prototype
+- [ ] Add AI-assisted data analysis
+- [ ] Evaluate backend/data-source integration
+- [ ] Evaluate possible integration with existing QS data systems
+
+## Project Status
+
+**Status: Prototype / Active Development**
 
 This project is currently a functional prototype and is not intended to represent a production-ready enterprise application.
 
-Author
+## Author
 
-Francisco Rodrigues
+**Francisco Rodrigues**
 
 Flutter / Dart development, application concept, implementation, testing and project development.
