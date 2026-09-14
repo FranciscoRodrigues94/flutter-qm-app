@@ -153,6 +153,6 @@ This project is currently a functional prototype and is not intended to represen
 
 ## Author
 
-**Francisco Rodrigues**
+**Francisco de Castro Rodrigues**
 
 Flutter / Dart development, application concept, implementation, testing and project development.
