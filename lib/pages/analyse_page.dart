@@ -2,6 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import 'messungen_page.dart';
+import 'messungsdetails_page.dart';
 import '../widgets/sidebar.dart';
 
 class AnalysePage extends StatefulWidget {
@@ -17,70 +18,97 @@ class AnalysePage extends StatefulWidget {
 }
 
 class _AnalysePageState extends State<AnalysePage> {
+  static const double bezugL = 55.0;
+  static const double bezugA = 0.0;
+  static const double bezugB = 4.0;
+
+  static const double toleranzL = 1.5;
+  static const double toleranzA = 0.4;
+  static const double toleranzB = 0.4;
+  static const double toleranzDeltaE = 2.0;
+
   String selectedArtikel = 'Alle';
   String selectedBaNr = 'Alle';
   String selectedBenutzer = 'Alle';
   String selectedErgebnis = 'Alle';
 
+  DateTime? startDate;
+  DateTime? endDate;
+  dynamic selectedMeasurement;
+  final Set<dynamic> selectedMeasurements = <dynamic>{};
+
   bool showL = true;
   bool showA = true;
   bool showB = true;
+  bool showDeltaE = true;
+  bool showDeltaL = false;
+  bool showDeltaA = false;
+  bool showDeltaB = false;
 
-  // ============================================================
-  // BEZUG / TOLERANZEN
-  // ============================================================
+  // A análise começa vazia. Os resultados só aparecem depois de uma pesquisa.
+  bool hasSearched = false;
 
-  static const double bezugL = 55.00;
-  static const double bezugA = 0.00;
-  static const double bezugB = 4.00;
-
-  static const double toleranzL = 1.50;
-  static const double toleranzA = 0.40;
-  static const double toleranzB = 0.40;
-
-  // ============================================================
-  // FILTER OPTIONS
-  // ============================================================
+  List<dynamic> get _measurements {
+    return widget.measurements.where((m) => !_isReference(m)).toList();
+  }
 
   List<String> get artikelOptions {
-    final values = widget.measurements
-        .where((m) => !_isReference(m))
+    final values = _measurements
         .map((m) => m.artikelnummer.toString())
         .where((v) => v.trim().isNotEmpty)
         .toSet()
         .toList()
       ..sort();
-
     return ['Alle', ...values];
   }
 
   List<String> get baNrOptions {
-    final values = widget.measurements
-        .where((m) => !_isReference(m))
+    final values = _measurements
         .map((m) => m.baNr.toString())
         .where((v) => v.trim().isNotEmpty)
         .toSet()
         .toList()
       ..sort();
-
     return ['Alle', ...values];
   }
 
   List<String> get benutzerOptions {
-    final values = widget.measurements
-        .where((m) => !_isReference(m))
+    final values = _measurements
         .map((m) => m.benutzer.toString())
         .where((v) => v.trim().isNotEmpty)
         .toSet()
         .toList()
       ..sort();
-
     return ['Alle', ...values];
   }
 
-  // ============================================================
-  // ERKENNT DIE BEZUG-ZEILE
-  // ============================================================
+  DateTime get dataMinDate {
+    if (_measurements.isEmpty) {
+      return DateTime(2025, 1, 1);
+    }
+    return _measurements
+        .map((m) => m.datum as DateTime)
+        .reduce((a, b) => a.isBefore(b) ? a : b);
+  }
+
+  DateTime get dataMaxDate {
+    if (_measurements.isEmpty) {
+      return DateTime(2026, 9, 8);
+    }
+    return _measurements
+        .map((m) => m.datum as DateTime)
+        .reduce((a, b) => a.isAfter(b) ? a : b);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    startDate = dataMinDate;
+    endDate = dataMaxDate;
+    if (_measurements.isNotEmpty) {
+      selectedMeasurement = _measurements.first;
+    }
+  }
 
   bool _isReference(dynamic m) {
     final artikel = m.artikelnummer.toString().trim();
@@ -88,9 +116,7 @@ class _AnalysePageState extends State<AnalysePage> {
     final baNr = m.baNr.toString().trim();
     final benutzer = m.benutzer.toString().trim();
 
-    if (artikel == 'Schwarz RR' &&
-        baNr.isEmpty &&
-        benutzer.isEmpty) {
+    if (artikel == 'Schwarz RR' && baNr.isEmpty && benutzer.isEmpty) {
       return true;
     }
 
@@ -100,51 +126,63 @@ class _AnalysePageState extends State<AnalysePage> {
         benutzer.isEmpty;
   }
 
-  // ============================================================
-  // FILTER
-  // ============================================================
+  List<dynamic> get displayedMeasurements {
+    if (!hasSearched) {
+      return const <dynamic>[];
+    }
+    return filteredMeasurements;
+  }
 
   List<dynamic> get filteredMeasurements {
-    final result = widget.measurements.where((m) {
-      if (_isReference(m)) {
-        return false;
-      }
-
+    final result = _measurements.where((m) {
       final artikel = m.artikelnummer.toString();
       final baNr = m.baNr.toString();
       final benutzer = m.benutzer.toString();
       final status = m.status.toString().trim().toLowerCase();
+      final date = m.datum as DateTime;
 
       final artikelMatch =
-          selectedArtikel == 'Alle' ||
-          artikel == selectedArtikel;
-
-      final baNrMatch =
-          selectedBaNr == 'Alle' ||
-          baNr == selectedBaNr;
-
+          selectedArtikel == 'Alle' || artikel == selectedArtikel;
+      final baNrMatch = selectedBaNr == 'Alle' || baNr == selectedBaNr;
       final benutzerMatch =
-          selectedBenutzer == 'Alle' ||
-          benutzer == selectedBenutzer;
-
+          selectedBenutzer == 'Alle' || benutzer == selectedBenutzer;
       final ergebnisMatch =
-          selectedErgebnis == 'Alle' ||
-          status == selectedErgebnis;
+          selectedErgebnis == 'Alle' || status == selectedErgebnis;
+      final startMatch =
+          startDate == null || !date.isBefore(_dateOnly(startDate!));
+      final endMatch =
+          endDate == null || !date.isAfter(_endOfDay(endDate!));
 
       return artikelMatch &&
           baNrMatch &&
           benutzerMatch &&
-          ergebnisMatch;
+          ergebnisMatch &&
+          startMatch &&
+          endMatch;
     }).toList();
 
-    result.sort((a, b) => a.datum.compareTo(b.datum));
-
+    result.sort((a, b) => (b.datum as DateTime).compareTo(a.datum as DateTime));
     return result;
   }
 
-  // ============================================================
-  // RESET
-  // ============================================================
+  DateTime _dateOnly(DateTime date) =>
+      DateTime(date.year, date.month, date.day);
+
+  DateTime _endOfDay(DateTime date) =>
+      DateTime(date.year, date.month, date.day, 23, 59, 59);
+
+  String formatDate(DateTime date) {
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${two(date.day)}.${two(date.month)}.${date.year}';
+  }
+
+  String formatDateTime(DateTime date) {
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${two(date.day)}.${two(date.month)}.${date.year} '
+        '${two(date.hour)}:${two(date.minute)}';
+  }
+
+  String number(double value) => value.toStringAsFixed(1).replaceAll('.', ',');
 
   void resetFilters() {
     setState(() {
@@ -152,146 +190,155 @@ class _AnalysePageState extends State<AnalysePage> {
       selectedBaNr = 'Alle';
       selectedBenutzer = 'Alle';
       selectedErgebnis = 'Alle';
-
-      showL = true;
-      showA = true;
-      showB = true;
+      startDate = dataMinDate;
+      endDate = dataMaxDate;
+      selectedMeasurement = null;
+      selectedMeasurements.clear();
+      hasSearched = false;
     });
   }
 
-  // ============================================================
-  // DATE FORMAT
-  // ============================================================
-
-  String formatDate(DateTime date) {
-    String twoDigits(int value) =>
-        value.toString().padLeft(2, '0');
-
-    return '${twoDigits(date.day)}.'
-        '${twoDigits(date.month)}.'
-        '${date.year} '
-        '${twoDigits(date.hour)}:'
-        '${twoDigits(date.minute)}';
-  }
-
-  // ============================================================
-  // SPOTS
-  // ============================================================
-
-  List<FlSpot> _spots(
-    List<dynamic> data,
-    double Function(dynamic) value,
-  ) {
-    return List.generate(
-      data.length,
-      (index) => FlSpot(
-        index.toDouble(),
-        value(data[index]),
-      ),
+  Future<void> _pickStartDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: startDate ?? dataMinDate,
+      firstDate: dataMinDate,
+      lastDate: dataMaxDate,
+      locale: const Locale('de', 'DE'),
     );
+
+    if (picked != null) {
+      setState(() {
+        startDate = picked;
+        if (endDate != null && endDate!.isBefore(picked)) {
+          endDate = picked;
+        }
+        hasSearched = false;
+        selectedMeasurements.clear();
+        selectedMeasurement = null;
+      });
+    }
   }
 
-  // ============================================================
-  // DROPDOWN
-  // ============================================================
+  Future<void> _pickEndDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: endDate ?? dataMaxDate,
+      firstDate: dataMinDate,
+      lastDate: dataMaxDate,
+      locale: const Locale('de', 'DE'),
+    );
 
-  Widget _dropdown({
+    if (picked != null) {
+      setState(() {
+        endDate = picked;
+        if (startDate != null && startDate!.isAfter(picked)) {
+          startDate = picked;
+        }
+        hasSearched = false;
+        selectedMeasurements.clear();
+        selectedMeasurement = null;
+      });
+    }
+  }
+
+  Widget _filterDropdown({
     required String label,
     required String value,
     required List<String> items,
     required ValueChanged<String?> onChanged,
   }) {
-    return Expanded(
+    return SizedBox(
+      width: 220,
       child: DropdownButtonFormField<String>(
         value: value,
+        isExpanded: true,
         decoration: InputDecoration(
           labelText: label,
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
           ),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 14,
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
           ),
         ),
-        items: items.map((item) {
-          return DropdownMenuItem<String>(
-            value: item,
-            child: Text(
-              item,
-              overflow: TextOverflow.ellipsis,
-            ),
-          );
-        }).toList(),
+        items: items
+            .map(
+              (item) => DropdownMenuItem<String>(
+                value: item,
+                child: Text(item, overflow: TextOverflow.ellipsis),
+              ),
+            )
+            .toList(),
         onChanged: onChanged,
       ),
     );
   }
 
-  // ============================================================
-  // CHECKBOX
-  // ============================================================
-
-  Widget _measureToggle({
-    required String label,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return InkWell(
-      onTap: () => onChanged(!value),
-      borderRadius: BorderRadius.circular(8),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Checkbox(
-            value: value,
-            onChanged: (v) => onChanged(v ?? false),
-          ),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Color(0xFF334155),
-              fontWeight: FontWeight.w600,
+  Widget _dateField(String label, DateTime? value, VoidCallback onTap) {
+    return SizedBox(
+      width: 150,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: InputDecorator(
+          decoration: InputDecoration(
+            labelText: label,
+            filled: true,
+            fillColor: Colors.white,
+            suffixIcon: const Icon(
+              Icons.calendar_month_outlined,
+              size: 19,
+              color: Color(0xFF64748B),
+            ),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
             ),
           ),
-        ],
+          child: Text(
+            value == null ? '-' : formatDate(value),
+            style: const TextStyle(
+              color: Color(0xFF334155),
+              fontSize: 14,
+            ),
+          ),
+        ),
       ),
     );
   }
 
-  // ============================================================
-  // STAT CARD
-  // ============================================================
-
-  Widget _statCard(String label, String value) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: const Color(0xFFE2E8F0),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+  Widget _toggle({
+    required String label,
+    required bool value,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(7),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
+            Checkbox(
+              value: value,
+              onChanged: (_) => onTap(),
+              visualDensity: VisualDensity.compact,
+            ),
             Text(
               label,
               style: const TextStyle(
-                color: Color(0xFF64748B),
-                fontSize: 13,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              value,
-              style: const TextStyle(
-                color: Color(0xFF0F172A),
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
+                color: Color(0xFF334155),
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
@@ -300,14 +347,8 @@ class _AnalysePageState extends State<AnalysePage> {
     );
   }
 
-  // ============================================================
-  // STATISTICS
-  // ============================================================
-
   Widget _statistics(List<dynamic> data) {
-    if (data.isEmpty) {
-      return const SizedBox();
-    }
+    if (data.isEmpty) return const SizedBox();
 
     double avgL = 0;
     double avgA = 0;
@@ -326,800 +367,255 @@ class _AnalysePageState extends State<AnalysePage> {
     avgB /= data.length;
     avgDeltaE /= data.length;
 
+    final ok = data
+        .where((m) => m.status.toString().trim().toLowerCase() == 'erfüllt')
+        .length;
+    final notOk = data.length - ok;
+
     return Row(
       children: [
-        _statCard(
-          'Messungen',
-          data.length.toString(),
+        _statCard('Messungen', '${data.length}'),
+        const SizedBox(width: 10),
+        _statCard('i.O.', '$ok'),
+        const SizedBox(width: 10),
+        _statCard('n.i.O.', '$notOk'),
+        const SizedBox(width: 10),
+        _statCard('Ø L*', number(avgL)),
+        const SizedBox(width: 10),
+        _statCard('Ø a*', number(avgA)),
+        const SizedBox(width: 10),
+        _statCard('Ø b*', number(avgB)),
+        const SizedBox(width: 10),
+        _statCard('Ø ΔE*', number(avgDeltaE)),
+      ],
+    );
+  }
+
+  Widget _statCard(String label, String value) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
         ),
-        const SizedBox(width: 14),
-        _statCard(
-          'Ø L*',
-          avgL.toStringAsFixed(2),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF64748B),
+                fontSize: 11,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: const TextStyle(
+                color: Color(0xFF0F172A),
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 14),
-        _statCard(
-          'Ø a*',
-          avgA.toStringAsFixed(2),
+      ),
+    );
+  }
+
+  Widget _legendItem({
+    required String label,
+    required Color color,
+    required bool checked,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Row(
+        children: [
+          Checkbox(
+            value: checked,
+            onChanged: (_) => onTap(),
+            visualDensity: VisualDensity.compact,
+          ),
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 7),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 13,
+              color: Color(0xFF334155),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _toleranceLegend(String label, {required bool checked}) {
+    return Row(
+      children: [
+        Checkbox(
+          value: checked,
+          onChanged: (_) {},
+          visualDensity: VisualDensity.compact,
         ),
-        const SizedBox(width: 14),
-        _statCard(
-          'Ø b*',
-          avgB.toStringAsFixed(2),
+        Container(
+          width: 17,
+          height: 2,
+          decoration: const BoxDecoration(
+            border: Border(
+              top: BorderSide(
+                color: Color(0xFFB45309),
+                width: 2,
+              ),
+            ),
+          ),
         ),
-        const SizedBox(width: 14),
-        _statCard(
-          'Ø ΔE*',
-          avgDeltaE.toStringAsFixed(2),
+        const SizedBox(width: 7),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: Color(0xFF475569),
+          ),
         ),
       ],
     );
   }
 
-  // ============================================================
-  // METRIC INFO
-  // ============================================================
-
-  String get _selectedMetric {
-    if (showL && !showA && !showB) {
-      return 'L*';
+  List<FlSpot> _spots(List<dynamic> data, double Function(dynamic) value) {
+    // Keep the chart responsive with large datasets.
+    // For large selections we sample the data while preserving the first/last point.
+    if (data.length <= 120) {
+      return List.generate(
+        data.length,
+        (index) => FlSpot(index.toDouble(), value(data[index])),
+      );
     }
 
-    if (!showL && showA && !showB) {
-      return 'a*';
-    }
+    const maxPoints = 120;
+    final step = (data.length - 1) / (maxPoints - 1);
 
-    if (!showL && !showA && showB) {
-      return 'b*';
-    }
-
-    // Wenn mehrere Werte aktiv sind,
-    // verwenden wir L* als Referenz für
-    // den Toleranzbereich.
-    return 'L*';
+    return List.generate(maxPoints, (index) {
+      final sourceIndex = (index * step).round();
+      return FlSpot(
+        sourceIndex.toDouble(),
+        value(data[sourceIndex]),
+      );
+    });
   }
-
-  double get _referenceValue {
-    switch (_selectedMetric) {
-      case 'a*':
-        return bezugA;
-      case 'b*':
-        return bezugB;
-      default:
-        return bezugL;
-    }
-  }
-
-  double get _tolerance {
-    switch (_selectedMetric) {
-      case 'a*':
-        return toleranzA;
-      case 'b*':
-        return toleranzB;
-      default:
-        return toleranzL;
-    }
-  }
-
-  double get _lowerTolerance {
-    return _referenceValue - _tolerance;
-  }
-
-  double get _upperTolerance {
-    return _referenceValue + _tolerance;
-  }
-
-  double Function(dynamic) get _selectedValueFunction {
-    switch (_selectedMetric) {
-      case 'a*':
-        return (m) => m.a.toDouble();
-      case 'b*':
-        return (m) => m.b.toDouble();
-      default:
-        return (m) => m.l.toDouble();
-    }
-  }
-
-  bool _isInTolerance(dynamic m) {
-    final value = _selectedValueFunction(m);
-
-    return value >= _lowerTolerance &&
-        value <= _upperTolerance;
-  }
-
-  // ============================================================
-  // POINTS WITH STATUS COLORS
-  // ============================================================
-
-  List<FlSpot> _inToleranceSpots(
-    List<dynamic> data,
-    double Function(dynamic) value,
-  ) {
-    final spots = <FlSpot>[];
-
-    for (int i = 0; i < data.length; i++) {
-      final m = data[i];
-
-      if (_isInTolerance(m)) {
-        spots.add(
-          FlSpot(
-            i.toDouble(),
-            value(m),
-          ),
-        );
-      }
-    }
-
-    return spots;
-  }
-
-  List<FlSpot> _outToleranceSpots(
-    List<dynamic> data,
-    double Function(dynamic) value,
-  ) {
-    final spots = <FlSpot>[];
-
-    for (int i = 0; i < data.length; i++) {
-      final m = data[i];
-
-      if (!_isInTolerance(m)) {
-        spots.add(
-          FlSpot(
-            i.toDouble(),
-            value(m),
-          ),
-        );
-      }
-    }
-
-    return spots;
-  }
-
-  // ============================================================
-  // LEGEND DOT
-  // ============================================================
-
-  Widget _legendDot(Color color) {
-    return Container(
-      width: 12,
-      height: 12,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-      ),
-    );
-  }
-
-  // ============================================================
-  // LEGEND ROW
-  // ============================================================
-
-  Widget _legendRow({
-    required Widget marker,
-    required String label,
-    String? value,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        vertical: 7,
-      ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 26,
-            child: Center(
-              child: marker,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: Color(0xFF475569),
-                fontSize: 13,
-              ),
-            ),
-          ),
-          if (value != null)
-            Text(
-              value,
-              style: const TextStyle(
-                color: Color(0xFF0F172A),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  // ============================================================
-  // LEGEND / VALUES PANEL
-  // ============================================================
-
-  Widget _buildLegendPanel(List<dynamic> data) {
-    final inTolerance = data
-        .where(_isInTolerance)
-        .length;
-
-    final outTolerance =
-        data.length - inTolerance;
-
-    final inPercentage = data.isEmpty
-        ? 0.0
-        : inTolerance / data.length * 100;
-
-    final outPercentage = data.isEmpty
-        ? 0.0
-        : outTolerance / data.length * 100;
-
-    return Container(
-      width: 290,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: const Color(0xFFE2E8F0),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Legende & Werte',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF0F172A),
-            ),
-          ),
-
-          const SizedBox(height: 14),
-
-          _legendRow(
-            marker: _legendDot(
-              const Color(0xFF2563EB),
-            ),
-            label: 'Messung i.O.',
-            value:
-                '$inTolerance (${inPercentage.toStringAsFixed(1)}%)',
-          ),
-
-          _legendRow(
-            marker: _legendDot(
-              const Color(0xFFEF4444),
-            ),
-            label: 'Messung n.i.O.',
-            value:
-                '$outTolerance (${outPercentage.toStringAsFixed(1)}%)',
-          ),
-
-          const SizedBox(height: 12),
-
-          const Divider(
-            color: Color(0xFFE2E8F0),
-          ),
-
-          const SizedBox(height: 8),
-
-          const Text(
-            'Messwerte',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF334155),
-            ),
-          ),
-
-          const SizedBox(height: 6),
-
-          _legendRow(
-            marker: _legendDot(
-              const Color(0xFF2563EB),
-            ),
-            label: 'L*',
-            value: bezugL.toStringAsFixed(2),
-          ),
-
-          _legendRow(
-            marker: _legendDot(
-              const Color(0xFF16A34A),
-            ),
-            label: 'a*',
-            value: bezugA.toStringAsFixed(2),
-          ),
-
-          _legendRow(
-            marker: _legendDot(
-              const Color(0xFFEA580C),
-            ),
-            label: 'b*',
-            value: bezugB.toStringAsFixed(2),
-          ),
-
-          const SizedBox(height: 10),
-
-          const Divider(
-            color: Color(0xFFE2E8F0),
-          ),
-
-          const SizedBox(height: 10),
-
-          const Text(
-            'Toleranz',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF334155),
-            ),
-          ),
-
-          const SizedBox(height: 6),
-
-          _legendRow(
-            marker: Container(
-              width: 18,
-              height: 3,
-              color: const Color(0xFF16A34A),
-            ),
-            label: 'Untere Toleranz',
-            value:
-                _lowerTolerance.toStringAsFixed(2),
-          ),
-
-          _legendRow(
-            marker: Container(
-              width: 18,
-              height: 3,
-              color: const Color(0xFF16A34A),
-            ),
-            label: 'Obere Toleranz',
-            value:
-                _upperTolerance.toStringAsFixed(2),
-          ),
-
-          _legendRow(
-            marker: Container(
-              width: 18,
-              height: 3,
-              color: const Color(0xFF64748B),
-            ),
-            label: 'Bezug',
-            value:
-                _referenceValue.toStringAsFixed(2),
-          ),
-
-          const SizedBox(height: 14),
-
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF0FDF4),
-              borderRadius:
-                  BorderRadius.circular(10),
-            ),
-            child: const Text(
-              'Grüner Bereich = innerhalb Toleranz',
-              style: TextStyle(
-                color: Color(0xFF166534),
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFEF2F2),
-              borderRadius:
-                  BorderRadius.circular(10),
-            ),
-            child: const Text(
-              'Roter Bereich = außerhalb Toleranz',
-              style: TextStyle(
-                color: Color(0xFF991B1B),
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ============================================================
-  // METRIC SELECTOR
-  // ============================================================
-
-  Widget _metricButton({
-    required String label,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding:
-              const EdgeInsets.symmetric(
-            vertical: 11,
-          ),
-          decoration: BoxDecoration(
-            color: selected
-                ? const Color(0xFF2563EB)
-                : const Color(0xFFE2E8F0),
-            borderRadius:
-                BorderRadius.circular(8),
-          ),
-          child: Center(
-            child: Text(
-              label,
-              style: TextStyle(
-                color: selected
-                    ? Colors.white
-                    : const Color(0xFF334155),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ============================================================
-  // CHART
-  // ============================================================
 
   Widget _chart(List<dynamic> data) {
     if (data.isEmpty) {
-      return _emptyChart(
-        'Keine Messungen für diese Auswahl gefunden.',
+      return _emptyBox(
+        hasSearched
+            ? 'Keine Messungen für diese Auswahl gefunden.'
+            : 'Filter auswählen und „Daten aktualisieren“ ausführen.',
       );
     }
 
-    if (!showL && !showA && !showB) {
-      return _emptyChart(
-        'Mindestens einen Messwert auswählen.',
-      );
-    }
+    // Wenn mehrere Messungen in der Tabelle ausgewählt sind,
+    // zeigt das Diagramm nur diese Auswahl. Ohne Auswahl werden
+    // weiterhin alle gefilterten Messungen dargestellt.
+    final chartData = selectedMeasurements.isEmpty
+        ? data
+        : data.where((m) => selectedMeasurements.contains(m)).toList();
 
-    final bool onlyL = showL && !showA && !showB;
-    final bool onlyA = !showL && showA && !showB;
-    final bool onlyB = !showL && !showA && showB;
+    final bars = <LineChartBarData>[];
+    final showDots = chartData.length <= 80;
+    final useCurve = chartData.length <= 80;
 
-    final List<LineChartBarData> lines = [];
-
-    // ==========================================================
-    // L*
-    // ==========================================================
-
-    if (showL) {
-      lines.add(
+    void addSeries({
+      required bool visible,
+      required Color color,
+      required double Function(dynamic) value,
+    }) {
+      if (!visible) return;
+      bars.add(
         LineChartBarData(
-          spots: _spots(
-            data,
-            (m) => m.l.toDouble(),
-          ),
-          isCurved: false,
-          barWidth: 1.5,
-          color: const Color(0xFF2563EB),
-          dotData: const FlDotData(
-            show: false,
-          ),
+          spots: _spots(chartData, value),
+          isCurved: true,
+          barWidth: 2.2,
+          color: color,
+          dotData: const FlDotData(show: true),
+          belowBarData: BarAreaData(show: false),
         ),
       );
     }
 
-    // ==========================================================
-    // a*
-    // ==========================================================
-
-    if (showA) {
-      lines.add(
-        LineChartBarData(
-          spots: _spots(
-            data,
-            (m) => m.a.toDouble(),
-          ),
-          isCurved: false,
-          barWidth: 1.5,
-          color: const Color(0xFF16A34A),
-          dotData: const FlDotData(
-            show: false,
-          ),
-        ),
-      );
-    }
-
-    // ==========================================================
-    // b*
-    // ==========================================================
-
-    if (showB) {
-      lines.add(
-        LineChartBarData(
-          spots: _spots(
-            data,
-            (m) => m.b.toDouble(),
-          ),
-          isCurved: false,
-          barWidth: 1.5,
-          color: const Color(0xFFEA580C),
-          dotData: const FlDotData(
-            show: false,
-          ),
-        ),
-      );
-    }
-
-    // ==========================================================
-    // Y SCALE
-    // ==========================================================
+    addSeries(
+      visible: showL,
+      color: const Color(0xFF2563EB),
+      value: (m) => m.l.toDouble(),
+    );
+    addSeries(
+      visible: showA,
+      color: const Color(0xFFDC2626),
+      value: (m) => m.a.toDouble(),
+    );
+    addSeries(
+      visible: showB,
+      color: const Color(0xFF0F766E),
+      value: (m) => m.b.toDouble(),
+    );
+    addSeries(
+      visible: showDeltaE,
+      color: const Color(0xFF334155),
+      value: (m) => m.deltaE.toDouble(),
+    );
 
     double minY = double.infinity;
     double maxY = double.negativeInfinity;
 
-    for (final m in data) {
-      if (showL) {
-        minY = _min(
-          minY,
-          m.l.toDouble(),
-        );
-        maxY = _max(
-          maxY,
-          m.l.toDouble(),
-        );
-      }
+    for (final m in chartData) {
+      final values = <double>[];
+      if (showL) values.add(m.l.toDouble());
+      if (showA) values.add(m.a.toDouble());
+      if (showB) values.add(m.b.toDouble());
+      if (showDeltaE) values.add(m.deltaE.toDouble());
 
-      if (showA) {
-        minY = _min(
-          minY,
-          m.a.toDouble(),
-        );
-        maxY = _max(
-          maxY,
-          m.a.toDouble(),
-        );
-      }
-
-      if (showB) {
-        minY = _min(
-          minY,
-          m.b.toDouble(),
-        );
-        maxY = _max(
-          maxY,
-          m.b.toDouble(),
-        );
-      }
+      if (values.isEmpty) continue;
+      final localMin = values.reduce((a, b) => a < b ? a : b);
+      final localMax = values.reduce((a, b) => a > b ? a : b);
+      if (localMin < minY) minY = localMin;
+      if (localMax > maxY) maxY = localMax;
     }
 
-    // Wenn nur eine Messgröße ausgewählt ist,
-    // sorgen wir dafür, dass die Toleranzzone
-    // immer sichtbar ist.
-    if (onlyL || onlyA || onlyB) {
-      minY = _min(
-        minY,
-        _lowerTolerance,
-      );
-
-      maxY = _max(
-        maxY,
-        _upperTolerance,
-      );
-    }
-
-    if (minY == double.infinity ||
-        maxY == double.negativeInfinity) {
+    if (!minY.isFinite || !maxY.isFinite) {
       minY = 0;
-      maxY = 1;
+      maxY = 10;
     }
 
     var range = maxY - minY;
+    if (range < 1) range = 1;
 
-    if (range == 0) {
-      range = 1;
-    }
+    minY -= range * .12;
+    maxY += range * .12;
 
-    minY -= range * 0.10;
-    maxY += range * 0.10;
-
-    final double maxX =
-        data.length > 1
-            ? (data.length - 1).toDouble()
-            : 1;
-
-    // ==========================================================
-    // TOLERANCE RANGES
-    // ==========================================================
-
-    final horizontalRanges =
-        <HorizontalRangeAnnotation>[];
-
-    if (onlyL || onlyA || onlyB) {
-      // Grüner Bereich innerhalb der Toleranz.
-      horizontalRanges.add(
-        HorizontalRangeAnnotation(
-          y1: _lowerTolerance,
-          y2: _upperTolerance,
-          color: const Color(
-            0xFFDCFCE7,
-          ).withOpacity(0.55),
-        ),
-      );
-
-      // Roter Bereich unterhalb der Toleranz.
-      horizontalRanges.add(
-        HorizontalRangeAnnotation(
-          y1: minY,
-          y2: _lowerTolerance,
-          color: const Color(
-            0xFFFEE2E2,
-          ).withOpacity(0.55),
-        ),
-      );
-
-      // Roter Bereich oberhalb der Toleranz.
-      horizontalRanges.add(
-        HorizontalRangeAnnotation(
-          y1: _upperTolerance,
-          y2: maxY,
-          color: const Color(
-            0xFFFEE2E2,
-          ).withOpacity(0.55),
-        ),
-      );
-    }
-
-    // ==========================================================
-    // REFERENCE / TOLERANCE LINES
-    // ==========================================================
-
-    final extraLines =
-        <HorizontalLine>[];
-
-    if (onlyL || onlyA || onlyB) {
-      extraLines.add(
-        HorizontalLine(
-          y: _referenceValue,
-          color: const Color(0xFF64748B),
-          strokeWidth: 1.5,
-          dashArray: [8, 5],
-        ),
-      );
-
-      extraLines.add(
-        HorizontalLine(
-          y: _lowerTolerance,
-          color: const Color(0xFF16A34A),
-          strokeWidth: 1.5,
-          dashArray: [8, 5],
-        ),
-      );
-
-      extraLines.add(
-        HorizontalLine(
-          y: _upperTolerance,
-          color: const Color(0xFF16A34A),
-          strokeWidth: 1.5,
-          dashArray: [8, 5],
-        ),
-      );
-    }
-
-    // ==========================================================
-    // POINT STATUS LAYERS
-    // ==========================================================
-
-    if (onlyL || onlyA || onlyB) {
-      final valueFunction =
-          _selectedValueFunction;
-
-      final inSpots =
-          _inToleranceSpots(
-        data,
-        valueFunction,
-      );
-
-      final outSpots =
-          _outToleranceSpots(
-        data,
-        valueFunction,
-      );
-
-      lines.add(
-        LineChartBarData(
-          spots: inSpots,
-          isCurved: false,
-          barWidth: 0,
-          color: Colors.transparent,
-          dotData: FlDotData(
-            show: true,
-            getDotPainter:
-                (spot, percent, barData, index) {
-              return FlDotCirclePainter(
-                radius: 3.8,
-                color:
-                    const Color(0xFF2563EB),
-                strokeWidth: 0,
-              );
-            },
-          ),
-        ),
-      );
-
-      lines.add(
-        LineChartBarData(
-          spots: outSpots,
-          isCurved: false,
-          barWidth: 0,
-          color: Colors.transparent,
-          dotData: FlDotData(
-            show: true,
-            getDotPainter:
-                (spot, percent, barData, index) {
-              return FlDotCirclePainter(
-                radius: 4.2,
-                color:
-                    const Color(0xFFEF4444),
-                strokeWidth: 0,
-              );
-            },
-          ),
-        ),
-      );
-    }
+    final maxX = chartData.length > 1 ? (chartData.length - 1).toDouble() : 1.0;
 
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(18, 16, 10, 10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(14),
-        border: Border.all(
-          color: const Color(0xFFE2E8F0),
-        ),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Text(
-                '$_selectedMetric Verlauf',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF0F172A),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'Alle Messungen im ausgewählten Zeitraum',
-                style: const TextStyle(
-                  color: Color(0xFF64748B),
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 16),
-
           Expanded(
             child: LineChart(
               LineChartData(
@@ -1127,175 +623,189 @@ class _AnalysePageState extends State<AnalysePage> {
                 maxX: maxX,
                 minY: minY,
                 maxY: maxY,
-
-                lineBarsData: lines,
-
-                rangeAnnotations:
-                    RangeAnnotations(
-                  horizontalRangeAnnotations:
-                      horizontalRanges,
+                lineBarsData: bars,
+                rangeAnnotations: RangeAnnotations(
+                  horizontalRangeAnnotations: [
+                    if (showL)
+                      HorizontalRangeAnnotation(
+                        y1: bezugL - toleranzL,
+                        y2: bezugL + toleranzL,
+                        color: const Color(0xFF22C55E).withOpacity(.09),
+                      ),
+                    if (showDeltaE)
+                      HorizontalRangeAnnotation(
+                        y1: 0,
+                        y2: toleranzDeltaE,
+                        color: const Color(0xFF22C55E).withOpacity(.06),
+                      ),
+                  ],
                 ),
-
-                extraLinesData:
-                    ExtraLinesData(
-                  horizontalLines:
-                      extraLines,
+                extraLinesData: ExtraLinesData(
+                  horizontalLines: [
+                    if (showL)
+                      HorizontalLine(
+                        y: bezugL,
+                        color: const Color(0xFF2563EB),
+                        strokeWidth: 1,
+                        dashArray: [5, 5],
+                      ),
+                    if (showL)
+                      HorizontalLine(
+                        y: bezugL + toleranzL,
+                        color: const Color(0xFFDC2626),
+                        strokeWidth: 1,
+                        dashArray: [5, 5],
+                      ),
+                    if (showL)
+                      HorizontalLine(
+                        y: bezugL - toleranzL,
+                        color: const Color(0xFFDC2626),
+                        strokeWidth: 1,
+                        dashArray: [5, 5],
+                      ),
+                    if (showA)
+                      HorizontalLine(
+                        y: bezugA,
+                        color: const Color(0xFFDC2626),
+                        strokeWidth: 1,
+                        dashArray: [4, 5],
+                      ),
+                    if (showA)
+                      HorizontalLine(
+                        y: bezugA + toleranzA,
+                        color: const Color(0xFFDC2626),
+                        strokeWidth: 1,
+                        dashArray: [4, 5],
+                      ),
+                    if (showA)
+                      HorizontalLine(
+                        y: bezugA - toleranzA,
+                        color: const Color(0xFFDC2626),
+                        strokeWidth: 1,
+                        dashArray: [4, 5],
+                      ),
+                    if (showB)
+                      HorizontalLine(
+                        y: bezugB,
+                        color: const Color(0xFF0F766E),
+                        strokeWidth: 1,
+                        dashArray: [4, 5],
+                      ),
+                    if (showB)
+                      HorizontalLine(
+                        y: bezugB + toleranzB,
+                        color: const Color(0xFFDC2626),
+                        strokeWidth: 1,
+                        dashArray: [4, 5],
+                      ),
+                    if (showB)
+                      HorizontalLine(
+                        y: bezugB - toleranzB,
+                        color: const Color(0xFFDC2626),
+                        strokeWidth: 1,
+                        dashArray: [4, 5],
+                      ),
+                    if (showDeltaE)
+                      HorizontalLine(
+                        y: toleranzDeltaE,
+                        color: const Color(0xFF64748B),
+                        strokeWidth: 1,
+                        dashArray: [4, 5],
+                      ),
+                  ],
                 ),
-
                 gridData: FlGridData(
                   show: true,
-                  drawVerticalLine: false,
-                  horizontalInterval:
-                      range / 5,
-                  getDrawingHorizontalLine:
-                      (value) {
-                    return FlLine(
-                      color: const Color(
-                        0xFFD8E0E8,
-                      ),
-                      strokeWidth: 1,
-                      dashArray: [7, 5],
-                    );
-                  },
+                  drawVerticalLine: true,
+                  verticalInterval: chartData.length > 12
+                      ? (chartData.length / 6).ceilToDouble()
+                      : 1,
+                  horizontalInterval: range / 5,
+                  getDrawingHorizontalLine: (_) => const FlLine(
+                    color: Color(0xFFE2E8F0),
+                    strokeWidth: 1,
+                  ),
+                  getDrawingVerticalLine: (_) => const FlLine(
+                    color: Color(0xFFF1F5F9),
+                    strokeWidth: 1,
+                  ),
                 ),
-
                 borderData: FlBorderData(
                   show: true,
                   border: const Border(
-                    left: BorderSide(
-                      color: Color(0xFFCBD5E1),
-                    ),
-                    bottom: BorderSide(
-                      color: Color(0xFFCBD5E1),
-                    ),
+                    left: BorderSide(color: Color(0xFFCBD5E1)),
+                    bottom: BorderSide(color: Color(0xFFCBD5E1)),
                     top: BorderSide.none,
                     right: BorderSide.none,
                   ),
                 ),
-
                 titlesData: FlTitlesData(
-                  topTitles:
-                      const AxisTitles(
-                    sideTitles:
-                        SideTitles(
-                      showTitles: false,
-                    ),
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
                   ),
-
-                  rightTitles:
-                      const AxisTitles(
-                    sideTitles:
-                        SideTitles(
-                      showTitles: false,
-                    ),
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
                   ),
-
-                  leftTitles:
-                      AxisTitles(
-                    axisNameWidget: Padding(
-                      padding:
-                          const EdgeInsets.only(
-                        bottom: 8,
-                      ),
-                      child: Text(
-                        _selectedMetric,
-                        style:
-                            const TextStyle(
-                          color:
-                              Color(0xFF64748B),
-                          fontSize: 12,
-                          fontWeight:
-                              FontWeight.w600,
-                        ),
+                  leftTitles: AxisTitles(
+                    axisNameWidget: const Text(
+                      'Wert',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF475569),
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                    axisNameSize: 28,
-                    sideTitles:
-                        SideTitles(
+                    sideTitles: SideTitles(
                       showTitles: true,
-                      reservedSize: 48,
-                      interval:
-                          range / 5,
-                      getTitlesWidget:
-                          (value, meta) {
+                      reservedSize: 42,
+                      interval: range / 5,
+                      getTitlesWidget: (value, meta) {
+                        // Bei kleinen Wertebereichen (z. B. a* und b*)
+                        // eine Nachkommastelle anzeigen, damit die Skala
+                        // nicht mehrfach nur als 0 erscheint.
+                        final useDecimal = range < 10;
+                        final text = useDecimal
+                            ? value.toStringAsFixed(1).replaceAll('.', ',')
+                            : value.toStringAsFixed(0);
+
                         return Text(
-                          value
-                              .toStringAsFixed(
-                            1,
-                          ),
-                          style:
-                              const TextStyle(
-                            color:
-                                Color(
-                              0xFF64748B,
-                            ),
-                            fontSize: 11,
+                          text,
+                          style: const TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 10,
                           ),
                         );
                       },
                     ),
                   ),
-
-                  bottomTitles:
-                      AxisTitles(
-                    axisNameWidget:
-                        const Padding(
-                      padding:
-                          EdgeInsets.only(
-                        top: 6,
-                      ),
-                      child: Text(
-                        'Datum',
-                        style:
-                            TextStyle(
-                          color:
-                              Color(
-                            0xFF64748B,
-                          ),
-                          fontSize: 12,
-                          fontWeight:
-                              FontWeight.w600,
-                        ),
+                  bottomTitles: AxisTitles(
+                    axisNameWidget: const Text(
+                      'Datum',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF475569),
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                    axisNameSize: 25,
-                    sideTitles:
-                        SideTitles(
+                    sideTitles: SideTitles(
                       showTitles: true,
-                      reservedSize: 42,
-                      interval:
-                          data.length > 10
-                              ? (data.length /
-                                      8)
-                                  .ceilToDouble()
-                              : 1,
-                      getTitlesWidget:
-                          (value, meta) {
-                        final index =
-                            value.round();
-
-                        if (index < 0 ||
-                            index >=
-                                data.length) {
+                      reservedSize: 38,
+                      interval: chartData.length > 8
+                          ? (chartData.length / 6).ceilToDouble()
+                          : 1,
+                      getTitlesWidget: (value, meta) {
+                        final index = value.round();
+                        if (index < 0 || index >= chartData.length) {
                           return const SizedBox();
                         }
-
-                        final date =
-                            data[index].datum
-                                as DateTime;
-
+                        final date = chartData[index].datum as DateTime;
                         return SideTitleWidget(
                           meta: meta,
                           child: Text(
-                            '${date.day.toString().padLeft(2, '0')}.'
-                            '${date.month.toString().padLeft(2, '0')}',
-                            style:
-                                const TextStyle(
-                              color:
-                                  Color(
-                                0xFF64748B,
-                              ),
-                              fontSize: 10,
+                            '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}',
+                            style: const TextStyle(
+                              color: Color(0xFF64748B),
+                              fontSize: 9,
                             ),
                           ),
                         );
@@ -1303,72 +813,508 @@ class _AnalysePageState extends State<AnalysePage> {
                     ),
                   ),
                 ),
-
-                lineTouchData:
-                    LineTouchData(
+                lineTouchData: LineTouchData(
                   enabled: true,
-                  touchTooltipData:
-                      LineTouchTooltipData(
-                    getTooltipItems:
-                        (spots) {
-                      return spots
-                          .map(
-                            (spot) {
-                          final index =
-                              spot.x.round();
+                  handleBuiltInTouches: true,
+                  touchTooltipData: LineTouchTooltipData(
+                    getTooltipItems: (spots) {
+                      return spots.map((spot) {
+                        final index = spot.x.round();
+                        if (index < 0 || index >= chartData.length) return null;
 
-                          if (index < 0 ||
-                              index >=
-                                  data.length) {
-                            return null;
-                          }
-
-                          final m =
-                              data[index];
-
-                          String prefix;
-
-                          if (onlyL) {
-                            prefix = 'L*';
-                          } else if (onlyA) {
-                            prefix = 'a*';
-                          } else if (onlyB) {
-                            prefix = 'b*';
-                          } else {
-                            if (spot.barIndex ==
-                                0) {
-                              prefix = 'L*';
-                            } else if (spot.barIndex ==
-                                1) {
-                              prefix = 'a*';
-                            } else {
-                              prefix = 'b*';
-                            }
-                          }
-
-                          return LineTooltipItem(
-                            '${formatDate(m.datum as DateTime)}\n'
-                            'Artikel: ${m.artikelnummer}\n'
-                            'BA-Nr.: ${m.baNr}\n'
-                            'Benutzer: ${m.benutzer}\n'
-                            '$prefix: ${spot.y.toStringAsFixed(2)}\n'
-                            'ΔE*: ${m.deltaE.toStringAsFixed(2)}\n'
-                            'Ergebnis: ${m.status}',
-                            const TextStyle(
-                              color:
-                                  Colors.white,
-                              fontSize: 12,
-                              fontWeight:
-                                  FontWeight.w600,
-                            ),
+                        final m = chartData[index];
+                        final labels = <String>[];
+                        if (showL) labels.add('L*: ${number(m.l.toDouble())}');
+                        if (showA) labels.add('a*: ${number(m.a.toDouble())}');
+                        if (showB) labels.add('b*: ${number(m.b.toDouble())}');
+                        if (showDeltaE) {
+                          labels.add(
+                            'ΔE*: ${number(m.deltaE.toDouble())}',
                           );
-                        },
-                      )
-                          .whereType<
-                              LineTooltipItem>()
-                          .toList();
+                        }
+
+                        return LineTooltipItem(
+                          '${formatDateTime(m.datum as DateTime)}\n'
+                          '${m.artikelnummer}\n'
+                          'BA-Nr.: ${m.baNr}\n'
+                          '${labels.join('\n')}\n'
+                          'Ergebnis: ${m.status}',
+                          const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        );
+                      }).whereType<LineTooltipItem>().toList();
                     },
                   ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          _legendPanel(),
+        ],
+      ),
+    );
+  }
+
+  Widget _legendPanel() {
+    return SizedBox(
+      width: 150,
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 3),
+            _legendItem(
+              label: 'L*',
+              color: const Color(0xFF2563EB),
+              checked: showL,
+              onTap: () => setState(() => showL = !showL),
+            ),
+            _legendItem(
+              label: 'a*',
+              color: const Color(0xFFDC2626),
+              checked: showA,
+              onTap: () => setState(() => showA = !showA),
+            ),
+            _legendItem(
+              label: 'b*',
+              color: const Color(0xFF0F766E),
+              checked: showB,
+              onTap: () => setState(() => showB = !showB),
+            ),
+            _legendItem(
+              label: 'ΔE*',
+              color: const Color(0xFF334155),
+              checked: showDeltaE,
+              onTap: () => setState(() => showDeltaE = !showDeltaE),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Toleranzlinien',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF334155),
+              ),
+            ),
+            const SizedBox(height: 4),
+            _toleranceLegend('L* Toleranz', checked: showL),
+            _toleranceLegend('a* Toleranz', checked: showA),
+            _toleranceLegend('b* Toleranz', checked: showB),
+            _toleranceLegend('ΔE* Toleranz', checked: showDeltaE),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: const Text(
+                'Grün = Toleranzbereich\nRot = außerhalb',
+                style: TextStyle(
+                  fontSize: 10,
+                  height: 1.45,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _measurementTable(List<dynamic> data) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(14, 13, 14, 8),
+            child: Text(
+              'Messungen (gefiltert)',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+          ),
+          const Divider(height: 1, color: Color(0xFFE2E8F0)),
+          if (selectedMeasurements.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 7, 14, 2),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${selectedMeasurements.length} ausgewählt – Diagramm zeigt nur diese Messungen',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF155AA8),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        selectedMeasurements.clear();
+                        selectedMeasurement =
+                            data.isNotEmpty ? data.first : null;
+                      });
+                    },
+                    child: const Text('Auswahl aufheben'),
+                  ),
+                ],
+              ),
+            ),
+          SizedBox(
+            height: 300,
+            child: data.isEmpty
+                ? const Center(
+                    child: Text(
+                      'Keine Messungen für diese Filter gefunden.',
+                      style: TextStyle(
+                        color: Color(0xFF64748B),
+                        fontSize: 12,
+                      ),
+                    ),
+                  )
+                : Column(
+                    children: [
+                      Container(
+                        height: 38,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFF8FAFC),
+                          border: Border(
+                            bottom: BorderSide(
+                              color: Color(0xFFE2E8F0),
+                            ),
+                          ),
+                        ),
+                        child: Row(
+                          children: const [
+                            SizedBox(width: 42),
+                            SizedBox(
+                              width: 92,
+                              child: Text(
+                                'Datum',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF334155),
+                                ),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 90,
+                              child: Text(
+                                'BA-Nr.',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF334155),
+                                ),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 65,
+                              child: Text(
+                                'L*',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF334155),
+                                ),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 65,
+                              child: Text(
+                                'a*',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF334155),
+                                ),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 65,
+                              child: Text(
+                                'b*',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF334155),
+                                ),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 75,
+                              child: Text(
+                                'ΔE*',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF334155),
+                                ),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 65,
+                              child: Text(
+                                'Glanz',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF334155),
+                                ),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 110,
+                              child: Text(
+                                'Benutzer',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF334155),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: Scrollbar(
+                          thumbVisibility: true,
+                          child: ListView.builder(
+                            itemCount: data.length,
+                            itemBuilder: (context, index) {
+                              final m = data[index];
+                              final selected =
+                                  selectedMeasurements.contains(m);
+
+                              return InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    if (selected) {
+                                      selectedMeasurements.remove(m);
+                                    } else {
+                                      selectedMeasurements.add(m);
+                                    }
+                                    selectedMeasurement = m;
+                                  });
+                                },
+                                child: Container(
+                                  height: 42,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: selected
+                                        ? const Color(0xFFEFF6FF)
+                                        : index.isEven
+                                            ? Colors.white
+                                            : const Color(0xFFFAFBFC),
+                                    border: const Border(
+                                      bottom: BorderSide(
+                                        color: Color(0xFFF1F5F9),
+                                      ),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      SizedBox(
+                                        width: 42,
+                                        child: Checkbox(
+                                          value: selected,
+                                          onChanged: (value) {
+                                            setState(() {
+                                              if (value == true) {
+                                                selectedMeasurements.add(m);
+                                              } else {
+                                                selectedMeasurements.remove(m);
+                                              }
+                                              selectedMeasurement = m;
+                                            });
+                                          },
+                                          visualDensity:
+                                              VisualDensity.compact,
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 92,
+                                        child: Text(
+                                          formatDate(m.datum as DateTime),
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: Color(0xFF334155),
+                                          ),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 90,
+                                        child: Text(
+                                          m.baNr.toString(),
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: Color(0xFF334155),
+                                          ),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 65,
+                                        child: Text(
+                                          number(m.l.toDouble()),
+                                          style: const TextStyle(fontSize: 11),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 65,
+                                        child: Text(
+                                          number(m.a.toDouble()),
+                                          style: const TextStyle(fontSize: 11),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 65,
+                                        child: Text(
+                                          number(m.b.toDouble()),
+                                          style: const TextStyle(fontSize: 11),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 75,
+                                        child: Text(
+                                          number(m.deltaE.toDouble()),
+                                          style: const TextStyle(fontSize: 11),
+                                        ),
+                                      ),
+                                      const SizedBox(
+                                        width: 65,
+                                        child: Text(
+                                          '-',
+                                          style: TextStyle(fontSize: 11),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 110,
+                                        child: Text(
+                                          m.benutzer.toString(),
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: Color(0xFF334155),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
+            child: Text(
+              hasSearched
+                  ? '${data.length} Messungen'
+                  : 'Keine Messungen angezeigt – Suche ausführen',
+              style: const TextStyle(
+                fontSize: 10,
+                color: Color(0xFF94A3B8),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailsPanel(dynamic m) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Details der ausgewählten Messung',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${selectedMeasurements.length} Messung(en) ausgewählt',
+            style: const TextStyle(
+              fontSize: 11,
+              color: Color(0xFF64748B),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _detailRow('Datum', formatDateTime(m.datum as DateTime)),
+          _detailRow('Bauteil', m.artikelnummer.toString()),
+          _detailRow('BA-Nr.', m.baNr.toString()),
+          _detailRow('L*', number(m.l.toDouble())),
+          _detailRow('a*', number(m.a.toDouble())),
+          _detailRow('b*', number(m.b.toDouble())),
+          _detailRow('ΔE*', number(m.deltaE.toDouble())),
+          _detailRow(
+            'Glanz',
+            '-',
+          ),
+          _detailRow('Benutzer', m.benutzer.toString()),
+          _detailRow('Ergebnis', m.status.toString()),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => MessungsdetailsPage(
+                      measurement: m,
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.open_in_new, size: 17),
+              label: const Text('Details anzeigen'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFDCE8F7),
+                foregroundColor: const Color(0xFF164E80),
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(7),
                 ),
               ),
             ),
@@ -1378,458 +1324,316 @@ class _AnalysePageState extends State<AnalysePage> {
     );
   }
 
-  // ============================================================
-  // EMPTY CHART
-  // ============================================================
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 82,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 11,
+                color: Color(0xFF64748B),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 11,
+                color: Color(0xFF334155),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-  Widget _emptyChart(String text) {
+  Widget _emptyBox(String text) {
     return Container(
-      width: double.infinity,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(14),
-        border: Border.all(
-          color: const Color(0xFFE2E8F0),
-        ),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Text(
         text,
         style: const TextStyle(
           color: Color(0xFF64748B),
-          fontSize: 16,
+          fontSize: 14,
         ),
-        textAlign: TextAlign.center,
       ),
     );
   }
 
-  // ============================================================
-  // BUILD
-  // ============================================================
+  Widget _header(List<dynamic> data) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(28, 20, 28, 18),
+      decoration: const BoxDecoration(
+        color: Color(0xFFF1F5F9),
+        border: Border(
+          bottom: BorderSide(color: Color(0xFFE2E8F0)),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Trends analysieren',
+            style: TextStyle(
+              fontSize: 25,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: 3),
+          const Text(
+            'Entwicklung einer Farbeigenschaft über die Zeit',
+            style: TextStyle(
+              fontSize: 13,
+              color: Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE2E8F0),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 10,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                _filterDropdown(
+                  label: 'Bauteil',
+                  value: selectedArtikel,
+                  items: artikelOptions,
+                  onChanged: (v) {
+                    setState(() {
+                      selectedArtikel = v ?? 'Alle';
+                      hasSearched = false;
+                      selectedMeasurements.clear();
+                      selectedMeasurement = null;
+                    });
+                  },
+                ),
+                _filterDropdown(
+                  label: 'BA-Nr.',
+                  value: selectedBaNr,
+                  items: baNrOptions,
+                  onChanged: (v) {
+                    setState(() {
+                      selectedBaNr = v ?? 'Alle';
+                      hasSearched = false;
+                      selectedMeasurements.clear();
+                      selectedMeasurement = null;
+                    });
+                  },
+                ),
+                _dateField('Von', startDate, _pickStartDate),
+                _dateField('Bis', endDate, _pickEndDate),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    final results = filteredMeasurements;
+                    setState(() {
+                      hasSearched = true;
+                      selectedMeasurements.clear();
+                      selectedMeasurement =
+                          results.isNotEmpty ? results.first : null;
+                    });
+                  },
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('Suchen / aktualisieren'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF155AA8),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 17,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+                OutlinedButton(
+                  onPressed: resetFilters,
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color(0xFF334155),
+                    side: const BorderSide(color: Color(0xFFCBD5E1)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 15,
+                      vertical: 16,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text('Zurücksetzen'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              _filterDropdown(
+                label: 'Benutzer',
+                value: selectedBenutzer,
+                items: benutzerOptions,
+                onChanged: (v) {
+                  setState(() {
+                    selectedBenutzer = v ?? 'Alle';
+                    hasSearched = false;
+                    selectedMeasurements.clear();
+                    selectedMeasurement = null;
+                  });
+                },
+              ),
+              _filterDropdown(
+                label: 'Ergebnis',
+                value: selectedErgebnis,
+                items: const ['Alle', 'erfüllt', 'nicht erfüllt'],
+                onChanged: (v) {
+                  setState(() {
+                    selectedErgebnis = v ?? 'Alle';
+                    hasSearched = false;
+                    selectedMeasurements.clear();
+                    selectedMeasurement = null;
+                  });
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            hasSearched
+                ? '${data.length} Messungen'
+                : 'Keine Suche ausgeführt',
+            style: const TextStyle(
+              color: Color(0xFF64748B),
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final data = filteredMeasurements;
+    final data = displayedMeasurements;
+
+    final validSelectedMeasurements = selectedMeasurements
+        .where((m) => data.contains(m))
+        .toSet();
+
+    final currentMeasurement =
+        data.contains(selectedMeasurement)
+            ? selectedMeasurement
+            : (validSelectedMeasurements.isNotEmpty
+                ? validSelectedMeasurements.last
+                : (data.isNotEmpty ? data.first : null));
 
     return Scaffold(
-      backgroundColor:
-          const Color(0xFFF8FAFC),
+      backgroundColor: const Color(0xFFF8FAFC),
       body: Row(
         children: [
           AppSidebar(
             selectedPage: 'Analyse',
-
             onDashboard: () {
               Navigator.popUntil(
                 context,
                 (route) => route.isFirst,
               );
             },
-
             onMessungen: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) =>
-                      MessungenPage(
-                    measurements:
-                        widget.measurements,
+                  builder: (_) => MessungenPage(
+                    measurements: widget.measurements,
                   ),
                 ),
               );
             },
           ),
-
           Expanded(
             child: Column(
               children: [
-                // ==================================================
-                // HEADER
-                // ==================================================
-
-                Container(
-                  height: 80,
-                  padding:
-                      const EdgeInsets.symmetric(
-                    horizontal: 32,
-                  ),
-                  decoration:
-                      const BoxDecoration(
-                    color: Colors.white,
-                    border: Border(
-                      bottom: BorderSide(
-                        color:
-                            Color(0xFFE2E8F0),
-                      ),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      const Text(
-                        'Analyse',
-                        style: TextStyle(
-                          fontSize: 25,
-                          fontWeight:
-                              FontWeight.bold,
-                          color:
-                              Color(0xFF0F172A),
-                        ),
-                      ),
-
-                      const Spacer(),
-
-                      Text(
-                        '${data.length} Messungen',
-                        style:
-                            const TextStyle(
-                          color:
-                              Color(0xFF64748B),
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // ==================================================
-                // CONTENT
-                // ==================================================
-
+                _header(data),
                 Expanded(
-                  child:
-                      SingleChildScrollView(
-                    padding:
-                        const EdgeInsets.all(
-                      28,
-                    ),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // ==========================================
-                        // FILTER
-                        // ==========================================
-
-                        Container(
-                          width: double.infinity,
-                          padding:
-                              const EdgeInsets.all(
-                            20,
-                          ),
-                          decoration:
-                              BoxDecoration(
-                            color:
-                                Colors.white,
-                            borderRadius:
-                                BorderRadius
-                                    .circular(
-                              14,
-                            ),
-                            border:
-                                Border.all(
-                              color:
-                                  const Color(
-                                0xFFE2E8F0,
-                              ),
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment
-                                    .start,
-                            children: [
-                              const Text(
-                                'Analysefilter',
-                                style:
-                                    TextStyle(
-                                  fontSize:
-                                      16,
-                                  fontWeight:
-                                      FontWeight
-                                          .bold,
-                                  color:
-                                      Color(
-                                    0xFF0F172A,
-                                  ),
-                                ),
-                              ),
-
-                              const SizedBox(
-                                height: 16,
-                              ),
-
-                              Row(
-                                children: [
-                                  _dropdown(
-                                    label:
-                                        'Artikelnummer',
-                                    value:
-                                        selectedArtikel,
-                                    items:
-                                        artikelOptions,
-                                    onChanged:
-                                        (v) {
-                                      setState(
-                                        () {
-                                          selectedArtikel =
-                                              v ??
-                                                  'Alle';
-                                        },
-                                      );
-                                    },
-                                  ),
-
-                                  const SizedBox(
-                                    width: 14,
-                                  ),
-
-                                  _dropdown(
-                                    label:
-                                        'BA-Nr.',
-                                    value:
-                                        selectedBaNr,
-                                    items:
-                                        baNrOptions,
-                                    onChanged:
-                                        (v) {
-                                      setState(
-                                        () {
-                                          selectedBaNr =
-                                              v ??
-                                                  'Alle';
-                                        },
-                                      );
-                                    },
-                                  ),
-
-                                  const SizedBox(
-                                    width: 14,
-                                  ),
-
-                                  _dropdown(
-                                    label:
-                                        'Benutzer',
-                                    value:
-                                        selectedBenutzer,
-                                    items:
-                                        benutzerOptions,
-                                    onChanged:
-                                        (v) {
-                                      setState(
-                                        () {
-                                          selectedBenutzer =
-                                              v ??
-                                                  'Alle';
-                                        },
-                                      );
-                                    },
-                                  ),
-
-                                  const SizedBox(
-                                    width: 14,
-                                  ),
-
-                                  _dropdown(
-                                    label:
-                                        'Ergebnis',
-                                    value:
-                                        selectedErgebnis,
-                                    items:
-                                        const [
-                                      'Alle',
-                                      'erfüllt',
-                                      'nicht erfüllt',
-                                    ],
-                                    onChanged:
-                                        (v) {
-                                      setState(
-                                        () {
-                                          selectedErgebnis =
-                                              v ??
-                                                  'Alle';
-                                        },
-                                      );
-                                    },
-                                  ),
-
-                                  const SizedBox(
-                                    width: 14,
-                                  ),
-
-                                  OutlinedButton(
-                                    onPressed:
-                                        resetFilters,
-                                    style:
-                                        OutlinedButton
-                                            .styleFrom(
-                                      padding:
-                                          const EdgeInsets
-                                              .symmetric(
-                                        horizontal:
-                                            18,
-                                        vertical:
-                                            18,
-                                      ),
-                                      side:
-                                          const BorderSide(
-                                        color:
-                                            Color(
-                                          0xFFCBD5E1,
-                                        ),
-                                      ),
-                                      shape:
-                                          RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius
-                                                .circular(
-                                          10,
-                                        ),
-                                      ),
-                                    ),
-                                    child:
-                                        const Text(
-                                      'Zurücksetzen',
-                                    ),
-                                  ),
-                                ],
-                              ),
-
-                              const SizedBox(
-                                height: 16,
-                              ),
-
-                              const Divider(
-                                height: 1,
-                                color:
-                                    Color(
-                                  0xFFE2E8F0,
-                                ),
-                              ),
-
-                              const SizedBox(
-                                height: 12,
-                              ),
-
-                              const Text(
-                                'Messwerte',
-                                style:
-                                    TextStyle(
-                                  fontSize:
-                                      14,
-                                  fontWeight:
-                                      FontWeight
-                                          .w600,
-                                  color:
-                                      Color(
-                                    0xFF334155,
-                                  ),
-                                ),
-                              ),
-
-                              const SizedBox(
-                                height: 8,
-                              ),
-
-                              Row(
-                                children: [
-                                  SizedBox(
-                                    width: 100,
-                                    child:
-                                        _measureToggle(
-                                      label: 'L*',
-                                      value:
-                                          showL,
-                                      onChanged:
-                                          (v) {
-                                        setState(
-                                          () =>
-                                              showL =
-                                                  v,
-                                        );
-                                      },
-                                    ),
-                                  ),
-
-                                  SizedBox(
-                                    width: 100,
-                                    child:
-                                        _measureToggle(
-                                      label: 'a*',
-                                      value:
-                                          showA,
-                                      onChanged:
-                                          (v) {
-                                        setState(
-                                          () =>
-                                              showA =
-                                                  v,
-                                        );
-                                      },
-                                    ),
-                                  ),
-
-                                  SizedBox(
-                                    width: 100,
-                                    child:
-                                        _measureToggle(
-                                      label: 'b*',
-                                      value:
-                                          showB,
-                                      onChanged:
-                                          (v) {
-                                        setState(
-                                          () =>
-                                              showB =
-                                                  v,
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
+                        const Text(
+                          'Farbwerte im Zeitverlauf',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
                           ),
                         ),
-
-                        const SizedBox(
-                          height: 20,
-                        ),
-
-                        // ==========================================
-                        // STATISTICS
-                        // ==========================================
-
-                        _statistics(data),
-
-                        const SizedBox(
-                          height: 20,
-                        ),
-
-                        // ==========================================
-                        // CHART + LEGEND
-                        // ==========================================
-
+                        const SizedBox(height: 8),
                         SizedBox(
-                          height: 600,
-                          child: Row(
-                            crossAxisAlignment:
-                                CrossAxisAlignment
-                                    .stretch,
-                            children: [
-                              Expanded(
-                                child:
-                                    _chart(data),
-                              ),
+                          height: 450,
+                          child: _chart(data),
+                        ),
+                        const SizedBox(height: 16),
+                        _statistics(data),
+                        const SizedBox(height: 16),
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final narrow = constraints.maxWidth < 1050;
 
-                              const SizedBox(
-                                width: 20,
-                              ),
+                            if (narrow) {
+                              return Column(
+                                children: [
+                                  _measurementTable(data),
+                                  const SizedBox(height: 14),
+                                  selectedMeasurement == null
+                                      ? _emptyBox(
+                                          'Messung auswählen, um Details zu sehen.',
+                                        )
+                                      : _detailsPanel(selectedMeasurement),
+                                ],
+                              );
+                            }
 
-                              _buildLegendPanel(
-                                data,
-                              ),
-                            ],
-                          ),
+                            return Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  flex: 7,
+                                  child: _measurementTable(data),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  flex: 3,
+                                  child: selectedMeasurement == null
+                                      ? _emptyBox(
+                                          'Messung auswählen, um Details zu sehen.',
+                                        )
+                                      : _detailsPanel(selectedMeasurement),
+                                ),
+                              ],
+                            );
+                          },
                         ),
                       ],
                     ),
@@ -1842,14 +1646,4 @@ class _AnalysePageState extends State<AnalysePage> {
       ),
     );
   }
-
-  // ============================================================
-  // MIN / MAX
-  // ============================================================
-
-  double _min(double a, double b) =>
-      a < b ? a : b;
-
-  double _max(double a, double b) =>
-      a > b ? a : b;
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'pages/messungen_page.dart';
 import 'pages/analyse_page.dart';
@@ -17,6 +18,11 @@ class QSApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'QS Farbanalyse',
+
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      supportedLocales: const [
+        Locale('de', 'DE'),
+      ],
       theme: ThemeData(
         useMaterial3: true,
         fontFamily: 'Arial',
