@@ -1,12 +1,15 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
+import '../main.dart';
+
 import 'messungen_page.dart';
 import 'messungsdetails_page.dart';
+import 'frag_ai_page.dart';
 import '../widgets/sidebar.dart';
 
 class AnalysePage extends StatefulWidget {
-  final List<dynamic> measurements;
+  final List<Measurement> measurements;
 
   const AnalysePage({
     super.key,
@@ -34,8 +37,8 @@ class _AnalysePageState extends State<AnalysePage> {
 
   DateTime? startDate;
   DateTime? endDate;
-  dynamic selectedMeasurement;
-  final Set<dynamic> selectedMeasurements = <dynamic>{};
+  Measurement? selectedMeasurement;
+  final Set<Measurement> selectedMeasurements = <Measurement>{};
 
   bool showL = true;
   bool showA = true;
@@ -48,7 +51,7 @@ class _AnalysePageState extends State<AnalysePage> {
   // A análise começa vazia. Os resultados só aparecem depois de uma pesquisa.
   bool hasSearched = false;
 
-  List<dynamic> get _measurements {
+  List<Measurement> get _measurements {
     return widget.measurements.where((m) => !_isReference(m)).toList();
   }
 
@@ -126,14 +129,14 @@ class _AnalysePageState extends State<AnalysePage> {
         benutzer.isEmpty;
   }
 
-  List<dynamic> get displayedMeasurements {
+  List<Measurement> get displayedMeasurements {
     if (!hasSearched) {
-      return const <dynamic>[];
+      return const <Measurement>[];
     }
     return filteredMeasurements;
   }
 
-  List<dynamic> get filteredMeasurements {
+  List<Measurement> get filteredMeasurements {
     final result = _measurements.where((m) {
       final artikel = m.artikelnummer.toString();
       final baNr = m.baNr.toString();
@@ -347,7 +350,7 @@ class _AnalysePageState extends State<AnalysePage> {
     );
   }
 
-  Widget _statistics(List<dynamic> data) {
+  Widget _statistics(List<Measurement> data) {
     if (data.isEmpty) return const SizedBox();
 
     double avgL = 0;
@@ -495,7 +498,7 @@ class _AnalysePageState extends State<AnalysePage> {
     );
   }
 
-  List<FlSpot> _spots(List<dynamic> data, double Function(dynamic) value) {
+  List<FlSpot> _spots(List<Measurement> data, double Function(dynamic) value) {
     // Keep the chart responsive with large datasets.
     // For large selections we sample the data while preserving the first/last point.
     if (data.length <= 120) {
@@ -517,7 +520,7 @@ class _AnalysePageState extends State<AnalysePage> {
     });
   }
 
-  Widget _chart(List<dynamic> data) {
+  Widget _chart(List<Measurement> data) {
     if (data.isEmpty) {
       return _emptyBox(
         hasSearched
@@ -928,7 +931,7 @@ class _AnalysePageState extends State<AnalysePage> {
     );
   }
 
-  Widget _measurementTable(List<dynamic> data) {
+  Widget _measurementTable(List<Measurement> data) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1373,7 +1376,7 @@ class _AnalysePageState extends State<AnalysePage> {
     );
   }
 
-  Widget _header(List<dynamic> data) {
+  Widget _header(List<Measurement> data) {
     return Container(
       padding: const EdgeInsets.fromLTRB(28, 20, 28, 18),
       decoration: const BoxDecoration(
@@ -1565,6 +1568,16 @@ class _AnalysePageState extends State<AnalysePage> {
                 context,
                 MaterialPageRoute(
                   builder: (_) => MessungenPage(
+                    measurements: widget.measurements,
+                  ),
+                ),
+              );
+            },
+            onFragAI: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => FragAIPage(
                     measurements: widget.measurements,
                   ),
                 ),

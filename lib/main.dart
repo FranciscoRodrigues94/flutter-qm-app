@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'pages/messungen_page.dart';
 import 'pages/analyse_page.dart';
+import 'pages/frag_ai_page.dart';
 import 'widgets/sidebar.dart';
 
 void main() {
@@ -950,6 +951,16 @@ class _DashboardPageState extends State<DashboardPage> {
                 context,
                 MaterialPageRoute(
                   builder: (_) => AnalysePage(
+                    measurements: measurements,
+                  ),
+                ),
+              );
+            },
+            onFragAI: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => FragAIPage(
                     measurements: measurements,
                   ),
                 ),

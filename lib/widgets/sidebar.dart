@@ -5,6 +5,7 @@ class AppSidebar extends StatelessWidget {
   final VoidCallback? onDashboard;
   final VoidCallback? onMessungen;
   final VoidCallback? onAnalyse;
+  final VoidCallback? onFragAI;
 
   const AppSidebar({
     super.key,
@@ -12,6 +13,7 @@ class AppSidebar extends StatelessWidget {
     this.onDashboard,
     this.onMessungen,
     this.onAnalyse,
+    this.onFragAI,
   });
 
   @override
@@ -70,9 +72,10 @@ class AppSidebar extends StatelessWidget {
               ),
 
               _sidebarItem(
-                icon: Icons.inventory_2_outlined,
-                label: 'Artikel',
-                pageName: 'Artikel',
+                icon: Icons.auto_awesome,
+                label: 'Frag AI...',
+                pageName: 'Frag AI',
+                onTap: onFragAI,
               ),
 
               _sidebarItem(

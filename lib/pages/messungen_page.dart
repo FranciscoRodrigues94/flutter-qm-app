@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import '../main.dart';
 import '../widgets/sidebar.dart';
 import 'messungsdetails_page.dart';
 import 'analyse_page.dart';
+import 'frag_ai_page.dart';
 
 class MessungenPage extends StatefulWidget {
-  final List<dynamic> measurements;
+  final List<Measurement> measurements;
 
   const MessungenPage({
     super.key,
@@ -44,7 +46,7 @@ class _MessungenPageState extends State<MessungenPage> {
   // ERKENNT DIE BEZUG-ZEILE
   // ============================================================
 
-  bool isReference(dynamic m) {
+  bool isReference(Measurement m) {
     final String artikel =
         m.artikelnummer.toString().trim();
 
@@ -77,7 +79,7 @@ class _MessungenPageState extends State<MessungenPage> {
   // FILTER
   // ============================================================
 
-  List<dynamic> get filteredMeasurements {
+  List<Measurement> get filteredMeasurements {
     return widget.measurements.where((m) {
       final baNr = m.baNr.toString();
       final datum = m.datum.toString();
@@ -160,6 +162,10 @@ class _MessungenPageState extends State<MessungenPage> {
           AppSidebar(
             selectedPage: 'Messungen',
 
+            // ==================================================
+            // NAVEGAÇÃO PARA DASHBOARD
+            // ==================================================
+
             onDashboard: () {
               Navigator.pop(context);
             },
@@ -173,6 +179,21 @@ class _MessungenPageState extends State<MessungenPage> {
                 context,
                 MaterialPageRoute(
                   builder: (_) => AnalysePage(
+                    measurements: widget.measurements,
+                  ),
+                ),
+              );
+            },
+
+            // ==================================================
+            // NAVEGAÇÃO PARA FRAG AI
+            // ==================================================
+
+            onFragAI: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => FragAIPage(
                     measurements: widget.measurements,
                   ),
                 ),
@@ -413,7 +434,7 @@ class _MessungenPageState extends State<MessungenPage> {
   // TABLE
   // ============================================================
 
-  Widget _buildTable(List<dynamic> data) {
+  Widget _buildTable(List<Measurement> data) {
     if (data.isEmpty) {
       return Container(
         width: double.infinity,
