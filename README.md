@@ -93,6 +93,8 @@ lib/
 └── widgets/
     └── sidebar.dart
 
+```
+
 ## Architecture
 
 The current prototype follows a simple Flutter application structure:
