@@ -11,14 +11,18 @@ class _QSIntent {
   final String? dimension;
   final List<String> baNrs;
   final String? artikelnummer;
+  final List<String> artikelnummern;
   final int? year;
+  final int? month;
 
   const _QSIntent(
     this.type, {
     this.dimension,
     this.baNrs = const [],
     this.artikelnummer,
+    this.artikelnummern = const [],
     this.year,
+    this.month,
   });
 }
 
@@ -56,6 +60,35 @@ class QSAnalyzer {
           intent.year,
         );
 
+      case 'dimension_development':
+        return _dimensionEntwicklung(
+          intent.dimension!,
+          intent.year,
+        );
+
+      case 'article_development':
+        return _artikelEntwicklung(
+          intent.artikelnummer!,
+          intent.dimension,
+          intent.year,
+          intent.month,
+        );
+
+      case 'article_compare':
+        return _artikelVergleich(
+          intent.artikelnummern,
+          intent.dimension,
+          intent.year,
+        );
+
+      case 'article_month':
+        return _artikelMonat(
+          intent.artikelnummer!,
+          intent.dimension,
+          intent.year!,
+          intent.month!,
+        );
+
       case 'ba_dimension':
         return _baDimensionAnalyse(
           intent.baNrs.first,
@@ -88,6 +121,12 @@ class QSAnalyzer {
 
       case 'article_deviations':
         return _artikelMitMeistenAbweichungen(
+          intent.year,
+        );
+
+      case 'article_status':
+        return _artikelStatus(
+          intent.artikelnummer!,
           intent.year,
         );
 
@@ -128,7 +167,9 @@ class QSAnalyzer {
     final baNrs = _extractMultipleBaNrs(q);
     final dimension = _detectDimension(q);
     final year = _detectYear(q);
+    final month = _detectMonth(q);
     final artikelnummer = _extractArtikelnummer(q);
+    final artikelnummern = _extractMultipleArtikelnummern(q);
 
     final asksCount = _hasAny(q, [
       'wie viele',
@@ -272,10 +313,63 @@ class QSAnalyzer {
       'genauer untersuchen',
     ]);
 
-    if (isExplorative && baNrs.isEmpty && artikelnummer == null) {
+    if (isExplorative && baNrs.isEmpty && artikelnummern.isEmpty) {
       return _QSIntent(
         'explore',
         year: year,
+      );
+    }
+
+    // ============================================================
+    // ARTIKEL: Vergleich und Entwicklung
+    // ============================================================
+    final comparisonArtikel = _extractComparisonArtikelnummern(q);
+
+    if (comparisonArtikel.length >= 2 &&
+        (asksComparison || asksDevelopment)) {
+      return _QSIntent(
+        'article_compare',
+        artikelnummern: comparisonArtikel,
+        dimension: dimension,
+        year: year,
+      );
+    }
+
+    // Einzelner Artikel + konkreter Monat.
+    if (artikelnummer != null &&
+        year != null &&
+        month != null) {
+      return _QSIntent(
+        'article_month',
+        artikelnummer: artikelnummer,
+        dimension: dimension,
+        year: year,
+        month: month,
+      );
+    }
+
+    // Einzelner Artikel + Jahr/Zeitraum, auch wenn die Frage nicht
+    // ausdrücklich "Entwicklung" sagt, z. B.:
+    // "Wie war die Farbe von Artikel 100018 im Jahr 2026?"
+    // Das wird als zeitliche Farbanalyse des Artikels behandelt.
+    if (artikelnummer != null && year != null) {
+      return _QSIntent(
+        'article_development',
+        artikelnummer: artikelnummer,
+        dimension: dimension,
+        year: year,
+        month: month,
+      );
+    }
+
+    // Einzelner Artikel + Entwicklung über die Zeit.
+    if (artikelnummer != null && asksDevelopment) {
+      return _QSIntent(
+        'article_development',
+        artikelnummer: artikelnummer,
+        dimension: dimension,
+        year: year,
+        month: month,
       );
     }
 
@@ -299,6 +393,16 @@ class QSAnalyzer {
       return _QSIntent(
         'ba_development',
         baNrs: baNrs,
+        dimension: dimension,
+        year: year,
+      );
+    }
+
+    // Konkrete Messgröße + Entwicklung über die Zeit,
+    // auch ohne Angabe einer einzelnen BA.
+    if (dimension != null && asksDevelopment) {
+      return _QSIntent(
+        'dimension_development',
         dimension: dimension,
         year: year,
       );
@@ -332,6 +436,14 @@ class QSAnalyzer {
       return _QSIntent(
         'ba_general',
         baNrs: baNrs,
+        year: year,
+      );
+    }
+
+    if (artikelnummer != null) {
+      return _QSIntent(
+        'article_status',
+        artikelnummer: artikelnummer,
         year: year,
       );
     }
@@ -471,7 +583,10 @@ class QSAnalyzer {
 
     // Fallback específico para perguntas de comparação que mencionam
     // dois números antes/depois de "oder", "und", "vs." etc.
-    if (result.length < 2) {
+    if (result.length < 2 && result.isNotEmpty) {
+      // Nur ergänzen, wenn bereits eine echte BA-Nr. erkannt wurde.
+      // Dadurch werden Fragen wie "Vergleiche 100024 und 100016"
+      // nicht fälschlich als BA-Vergleich behandelt.
       final fallback = RegExp(
         r'\b([0-9]{3,})\b\s*'
         r'(?:und|oder|vs\.?|versus|gegen|mit)\s*'
@@ -543,24 +658,98 @@ class QSAnalyzer {
   }
 
   String? _extractArtikelnummer(String q) {
-    final patterns = [
+    final all = _extractMultipleArtikelnummern(q);
+    return all.isEmpty ? null : all.first;
+  }
+
+  List<String> _extractMultipleArtikelnummern(String q) {
+    final result = <String>[];
+
+    // Artikelnummern im aktuellen QS-Datensatz sind sechsstellige
+    // Nummern (100001 ... 100025). Dadurch werden BA-Nr. wie 1001
+    // nicht versehentlich als Artikelnummer interpretiert.
+    final explicitPatterns = [
       RegExp(
-        r'artikel(?:nummer|nr)?[\s:#\-]*([a-z0-9][a-z0-9\-_/]*)',
+        r'artikel(?:nummer|nr)?[\s:#\-]*(\d{6})\b',
       ),
       RegExp(
-        r'produkt(?:nummer|nr)?[\s:#\-]*([a-z0-9][a-z0-9\-_/]*)',
+        r'produkt(?:nummer|nr)?[\s:#\-]*(\d{6})\b',
       ),
     ];
 
-    for (final pattern in patterns) {
-      final match = pattern.firstMatch(q);
-
-      if (match != null) {
-        return match.group(1);
+    for (final pattern in explicitPatterns) {
+      for (final match in pattern.allMatches(q)) {
+        final value = match.group(1);
+        if (value != null && _knownArtikelnummer(value) && !result.contains(value)) {
+          result.add(value);
+        }
       }
     }
 
-    return null;
+    // Auch natürliche Fragen wie "Vergleiche 100024 und 100016"
+    // werden erkannt, aber nur wenn die sechsstelligen Nummern
+    // tatsächlich im Datensatz existieren.
+    final numberPattern = RegExp(r'\b\d{6}\b');
+
+    for (final match in numberPattern.allMatches(q)) {
+      final value = match.group(0);
+      if (value != null && _knownArtikelnummer(value) && !result.contains(value)) {
+        result.add(value);
+      }
+    }
+
+    // Zusätzlich können die im Datensatz hinterlegten Artikelnamen
+    // verwendet werden, z. B. "Artikel Omega".
+    final names = <String, String>{};
+
+    for (final m in measurements) {
+      final number = m.artikelnummer.trim();
+      final name = m.name.trim();
+
+      if (number.length == 6 &&
+          RegExp(r'^\d{6}$').hasMatch(number) &&
+          name.isNotEmpty) {
+        names[_normalize(name)] = number;
+      }
+    }
+
+    for (final entry in names.entries) {
+      if (q.contains(entry.key) && !result.contains(entry.value)) {
+        result.add(entry.value);
+      }
+    }
+
+    return result;
+  }
+
+  bool _knownArtikelnummer(String value) {
+    return measurements.any(
+      (m) => m.artikelnummer.trim() == value && value.length == 6,
+    );
+  }
+
+  List<String> _extractComparisonArtikelnummern(String q) {
+    final result = <String>[];
+    result.addAll(_extractMultipleArtikelnummern(q));
+
+    if (result.length < 2) {
+      final match = RegExp(
+        r'\bartikel[\s\-]*(?:nummer|nr)?[\s:#\-]*'
+        r'([a-z0-9][a-z0-9\-_/]*)\s*'
+        r'(?:und|oder|vs\.?|versus|mit|gegen)\s*'
+        r'(?:artikel[\s\-]*(?:nummer|nr)?[\s:#\-]*)?'
+        r'([a-z0-9][a-z0-9\-_/]*)',
+      ).firstMatch(q);
+
+      if (match != null) {
+        final first = match.group(1);
+        final second = match.group(2);
+        if (first != null && !result.contains(first)) result.add(first);
+        if (second != null && !result.contains(second)) result.add(second);
+      }
+    }
+
+    return result;
   }
 
   int? _detectYear(String q) {
@@ -586,6 +775,43 @@ class QSAnalyzer {
 
     if (match != null) {
       return int.tryParse(match.group(1)!);
+    }
+
+    return null;
+  }
+
+  int? _detectMonth(String q) {
+    const months = {
+      'januar': 1,
+      'jan': 1,
+      'februar': 2,
+      'feb': 2,
+      'maerz': 3,
+      'märz': 3,
+      'mrz': 3,
+      'april': 4,
+      'apr': 4,
+      'mai': 5,
+      'juni': 6,
+      'jun': 6,
+      'juli': 7,
+      'jul': 7,
+      'august': 8,
+      'aug': 8,
+      'september': 9,
+      'sep': 9,
+      'oktober': 10,
+      'okt': 10,
+      'november': 11,
+      'nov': 11,
+      'dezember': 12,
+      'dez': 12,
+    };
+
+    for (final entry in months.entries) {
+      if (q.contains(entry.key)) {
+        return entry.value;
+      }
     }
 
     return null;
@@ -1187,6 +1413,400 @@ class QSAnalyzer {
   }
 
   // ================================================================
+  // ARTIKEL: ENTWICKLUNG / VERGLEICH / MONAT
+  // ================================================================
+
+  List<Measurement> _filterByArtikel(String artikelnummer, int? year) {
+    return _filterByYear(year)
+        .where((m) => _artikelMatches(m.artikelnummer, artikelnummer))
+        .toList();
+  }
+
+  bool _artikelMatches(String value, String requested) {
+    return value.trim().toLowerCase() == requested.trim().toLowerCase();
+  }
+
+  QSAnalysisResult _artikelStatus(
+    String artikelnummer,
+    int? year,
+  ) {
+    final data = _filterByArtikel(artikelnummer, year);
+
+    if (data.isEmpty) {
+      return QSAnalysisResult(
+        'Für Artikel $artikelnummer wurden keine Messungen gefunden'
+        '${year != null ? ' ($year)' : ''}.',
+      );
+    }
+
+    final errors = data
+        .where((m) => _normalize(m.status) == 'nicht erfuellt')
+        .length;
+    final rate = errors / data.length * 100;
+
+    final avgL =
+        data.map((m) => m.l).fold<double>(0, (sum, v) => sum + v) /
+            data.length;
+    final avgA =
+        data.map((m) => m.a).fold<double>(0, (sum, v) => sum + v) /
+            data.length;
+    final avgB =
+        data.map((m) => m.b).fold<double>(0, (sum, v) => sum + v) /
+            data.length;
+    final avgE =
+        data.map((m) => m.deltaE.abs()).fold<double>(0, (sum, v) => sum + v) /
+            data.length;
+
+    final buffer = StringBuffer();
+    buffer.writeln('Artikel $artikelnummer');
+    if (year != null) {
+      buffer.writeln('Zeitraum: $year');
+    }
+    buffer.writeln();
+    buffer.writeln('Messungen: ${data.length}');
+    buffer.writeln(
+      'Erfüllt: ${data.length - errors} '
+      '(${((data.length - errors) / data.length * 100).toStringAsFixed(1)} %)',
+    );
+    buffer.writeln(
+      'Nicht erfüllt: $errors (${rate.toStringAsFixed(1)} %)',
+    );
+    buffer.writeln();
+    buffer.writeln('Durchschnittliche Farbwerte:');
+    buffer.writeln('Ø L*: ${_formatNumber(avgL)}');
+    buffer.writeln('Ø a*: ${_formatNumber(avgA)}');
+    buffer.writeln('Ø b*: ${_formatNumber(avgB)}');
+    buffer.writeln('Ø |ΔE*|: ${_formatNumber(avgE)}');
+
+    return QSAnalysisResult(buffer.toString());
+  }
+
+  QSAnalysisResult _artikelEntwicklung(
+    String artikelnummer,
+    String? dimension,
+    int? year,
+    int? month,
+  ) {
+    final data = _filterByArtikel(artikelnummer, year)
+      ..sort((a, b) => a.datum.compareTo(b.datum));
+
+    if (data.isEmpty) {
+      return QSAnalysisResult(
+        'Für Artikel $artikelnummer wurden keine Messungen gefunden'
+        '${year != null ? ' ($year)' : ''}.',
+      );
+    }
+
+    if (month != null && year != null) {
+      return _artikelMonat(artikelnummer, dimension, year, month);
+    }
+
+    final monthly = <String, List<Measurement>>{};
+    for (final m in data) {
+      final key = '${m.datum.year}-${m.datum.month.toString().padLeft(2, '0')}';
+      monthly.putIfAbsent(key, () => []).add(m);
+    }
+
+    final months = monthly.keys.toList()..sort();
+    if (months.length < 2) {
+      return QSAnalysisResult(
+        'Für Artikel $artikelnummer gibt es zu wenige Zeitpunkte '
+        'für eine Entwicklung. Gefunden wurden ${data.length} Messungen.',
+      );
+    }
+
+    final buffer = StringBuffer();
+    buffer.writeln('Entwicklung der Farbe für Artikel $artikelnummer');
+    if (year != null) {
+      buffer.writeln('Zeitraum: $year');
+    } else {
+      buffer.writeln(
+        'Zeitraum: ${_formatDate(data.first.datum)} bis ${_formatDate(data.last.datum)}',
+      );
+    }
+    buffer.writeln();
+    buffer.writeln('Gesamt: ${data.length} Messungen');
+
+    if (dimension != null) {
+      final scores = <String, double>{};
+      for (final monthKey in months) {
+        scores[monthKey] = _dimensionMetrics(monthly[monthKey]!, dimension).score;
+      }
+
+      final first = scores[months.first]!;
+      final last = scores[months.last]!;
+      final difference = last - first;
+      final threshold = dimension == 'ΔE*' ? 0.10 : 2.0;
+      final trend = difference <= -threshold
+          ? 'verbessert'
+          : difference >= threshold
+              ? 'verschlechtert'
+              : 'weitgehend stabil';
+
+      buffer.writeln();
+      buffer.writeln('Fokus: $dimension');
+      buffer.writeln('Trend: $trend.');
+      buffer.writeln(
+        'Erster Zeitraum: ${_formatMetricScore(first, dimension)}',
+      );
+      buffer.writeln(
+        'Letzter Zeitraum: ${_formatMetricScore(last, dimension)}',
+      );
+      buffer.writeln();
+      buffer.writeln('Monatliche Entwicklung:');
+      for (final monthKey in months) {
+        buffer.writeln(
+          '${_formatMonth(monthKey)}: ${_formatMetricScore(scores[monthKey]!, dimension)}',
+        );
+      }
+    } else {
+      // "Farbe" ohne Dimension: L*, a*, b* und ΔE* zusammen betrachten.
+      buffer.writeln();
+      buffer.writeln('Farbentwicklung:');
+      for (final monthKey in months) {
+        final monthData = monthly[monthKey]!;
+        final avgL = monthData.map((m) => m.l).fold<double>(0, (s, v) => s + v) / monthData.length;
+        final avgA = monthData.map((m) => m.a).fold<double>(0, (s, v) => s + v) / monthData.length;
+        final avgB = monthData.map((m) => m.b).fold<double>(0, (s, v) => s + v) / monthData.length;
+        final avgE = monthData.map((m) => m.deltaE.abs()).fold<double>(0, (s, v) => s + v) / monthData.length;
+        final errors = monthData.where((m) => _normalize(m.status) == 'nicht erfuellt').length;
+        final rate = errors / monthData.length * 100;
+
+        buffer.writeln(
+          '${_formatMonth(monthKey)}: L* ${_formatNumber(avgL)}, '
+          'a* ${_formatNumber(avgA)}, b* ${_formatNumber(avgB)}, '
+          'Ø |ΔE*| ${_formatNumber(avgE)}, Fehlerquote ${rate.toStringAsFixed(1)} %',
+        );
+      }
+    }
+
+    return QSAnalysisResult(buffer.toString());
+  }
+
+  QSAnalysisResult _artikelMonat(
+    String artikelnummer,
+    String? dimension,
+    int year,
+    int month,
+  ) {
+    final data = _filterByArtikel(artikelnummer, year)
+        .where((m) => m.datum.month == month)
+        .toList();
+
+    if (data.isEmpty) {
+      return QSAnalysisResult(
+        'Für Artikel $artikelnummer wurden im ${_formatMonthNumber(month)} $year keine Messungen gefunden.',
+      );
+    }
+
+    final avgL = data.map((m) => m.l).fold<double>(0, (s, v) => s + v) / data.length;
+    final avgA = data.map((m) => m.a).fold<double>(0, (s, v) => s + v) / data.length;
+    final avgB = data.map((m) => m.b).fold<double>(0, (s, v) => s + v) / data.length;
+    final avgE = data.map((m) => m.deltaE.abs()).fold<double>(0, (s, v) => s + v) / data.length;
+    final errors = data.where((m) => _normalize(m.status) == 'nicht erfuellt').length;
+    final rate = errors / data.length * 100;
+
+    final buffer = StringBuffer();
+    buffer.writeln('Farbstatus für Artikel $artikelnummer');
+    buffer.writeln('Zeitraum: ${_formatMonthNumber(month)} $year');
+    buffer.writeln();
+    buffer.writeln('Messungen: ${data.length}');
+    buffer.writeln('Ø L*: ${_formatNumber(avgL)}');
+    buffer.writeln('Ø a*: ${_formatNumber(avgA)}');
+    buffer.writeln('Ø b*: ${_formatNumber(avgB)}');
+    buffer.writeln('Ø |ΔE*|: ${_formatNumber(avgE)}');
+    buffer.writeln('Fehlerquote: ${rate.toStringAsFixed(1)} %');
+
+    if (dimension != null) {
+      final metric = _dimensionMetrics(data, dimension);
+      buffer.writeln();
+      buffer.writeln(
+        '$dimension: ${metric.summary}',
+      );
+    }
+
+    return QSAnalysisResult(buffer.toString());
+  }
+
+  QSAnalysisResult _artikelVergleich(
+    List<String> artikelnummern,
+    String? dimension,
+    int? year,
+  ) {
+    if (artikelnummern.length < 2) {
+      return const QSAnalysisResult(
+        'Für einen Artikelvergleich werden mindestens zwei Artikelnummern benötigt.',
+      );
+    }
+
+    final comparison = <String, List<Measurement>>{};
+    for (final artikel in artikelnummern) {
+      comparison[artikel] = _filterByArtikel(artikel, year);
+    }
+
+    final missing = artikelnummern
+        .where((a) => comparison[a]!.isEmpty)
+        .toList();
+
+    if (missing.isNotEmpty) {
+      return QSAnalysisResult(
+        'Für ${missing.map((e) => 'Artikel $e').join(' und ')} '
+        'wurden keine Messungen gefunden'
+        '${year != null ? ' ($year)' : ''}.',
+      );
+    }
+
+    final buffer = StringBuffer();
+    buffer.writeln('Vergleich der Artikel');
+    if (year != null) buffer.writeln('Zeitraum: $year');
+    if (dimension != null) buffer.writeln('Fokus: $dimension');
+    buffer.writeln();
+
+    for (final artikel in artikelnummern) {
+      final data = comparison[artikel]!;
+      final errors = data
+          .where((m) => _normalize(m.status) == 'nicht erfuellt')
+          .length;
+      final rate = errors / data.length * 100;
+      final avgL = data.map((m) => m.l)
+              .fold<double>(0, (s, v) => s + v) / data.length;
+      final avgA = data.map((m) => m.a)
+              .fold<double>(0, (s, v) => s + v) / data.length;
+      final avgB = data.map((m) => m.b)
+              .fold<double>(0, (s, v) => s + v) / data.length;
+      final avgE = data.map((m) => m.deltaE.abs())
+              .fold<double>(0, (s, v) => s + v) / data.length;
+
+      buffer.writeln('Artikel $artikel:');
+      buffer.writeln('  Messungen: ${data.length}');
+      buffer.writeln('  Fehlerquote: ${rate.toStringAsFixed(1)} %');
+
+      if (dimension == null) {
+        buffer.writeln('  Ø L*: ${_formatNumber(avgL)}');
+        buffer.writeln('  Ø a*: ${_formatNumber(avgA)}');
+        buffer.writeln('  Ø b*: ${_formatNumber(avgB)}');
+        buffer.writeln('  Ø |ΔE*|: ${_formatNumber(avgE)}');
+      } else {
+        final metric = _dimensionMetrics(data, dimension);
+        buffer.writeln('  $dimension: ${metric.summary}');
+      }
+      buffer.writeln();
+    }
+
+    // Vergleichswert: bei einer konkreten Messgröße die Toleranzquote,
+    // ansonsten die Fehlerquote.
+    final scores = <String, double>{};
+    for (final artikel in artikelnummern) {
+      if (dimension == null) {
+        final data = comparison[artikel]!;
+        final errors = data
+            .where((m) => _normalize(m.status) == 'nicht erfuellt')
+            .length;
+        scores[artikel] = errors / data.length * 100;
+      } else {
+        scores[artikel] = _dimensionMetrics(
+          comparison[artikel]!,
+          dimension,
+        ).score;
+      }
+    }
+
+    final sorted = scores.entries.toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
+
+    if (sorted.length >= 2) {
+      final first = sorted.first;
+      final last = sorted.last;
+      final difference = last.value - first.value;
+
+      buffer.writeln('Zusammenfassung:');
+      if (dimension == null) {
+        buffer.writeln(
+          'Die Fehlerquote unterscheidet sich zwischen '
+          'Artikel ${first.key} und Artikel ${last.key} um '
+          '${difference.toStringAsFixed(1)} Prozentpunkte.',
+        );
+      } else if (dimension == 'ΔE*') {
+        buffer.writeln(
+          'Beim durchschnittlichen |ΔE*| liegt Artikel ${first.key} '
+          'bei ${_formatNumber(first.value)}, '
+          'Artikel ${last.key} bei ${_formatNumber(last.value)}.',
+        );
+      } else {
+        buffer.writeln(
+          'Bei $dimension liegt die Toleranzüberschreitungsrate '
+          'bei Artikel ${first.key} niedriger als bei Artikel ${last.key} '
+          '(${first.value.toStringAsFixed(1)} % vs. '
+          '${last.value.toStringAsFixed(1)} %).',
+        );
+      }
+    }
+
+    // Bei einem Vergleich ohne konkrete Dimension zeigen wir zusätzlich,
+    // wie sich die beiden Artikel Monat für Monat entwickelt haben.
+    if (dimension == null) {
+      buffer.writeln();
+      buffer.writeln('Entwicklung über die Zeit:');
+
+      final months = <String>{};
+      for (final artikel in artikelnummern) {
+        for (final m in comparison[artikel]!) {
+          months.add(
+            '${m.datum.year}-${m.datum.month.toString().padLeft(2, '0')}',
+          );
+        }
+      }
+
+      final sortedMonths = months.toList()..sort();
+
+      for (final monthKey in sortedMonths) {
+        final parts = <String>[];
+
+        for (final artikel in artikelnummern) {
+          final data = comparison[artikel]!
+              .where(
+                (m) =>
+                    '${m.datum.year}-${m.datum.month.toString().padLeft(2, '0')}' ==
+                    monthKey,
+              )
+              .toList();
+
+          if (data.isEmpty) {
+            parts.add('Artikel $artikel: keine Daten');
+          } else {
+            final avgE = data.map((m) => m.deltaE.abs())
+                    .fold<double>(0, (s, v) => s + v) / data.length;
+            final errors = data
+                .where((m) => _normalize(m.status) == 'nicht erfuellt')
+                .length;
+            final rate = errors / data.length * 100;
+
+            parts.add(
+              'Artikel $artikel: ${rate.toStringAsFixed(1)} % n.i.O., '
+              'Ø |ΔE*| ${_formatNumber(avgE)}',
+            );
+          }
+        }
+
+        buffer.writeln(
+          '${_formatMonth(monthKey)} | ${parts.join(' | ')}',
+        );
+      }
+    }
+
+    return QSAnalysisResult(buffer.toString());
+  }
+
+  String _formatMonthNumber(int month) {
+    const months = [
+      'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+      'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember',
+    ];
+    if (month < 1 || month > 12) return '$month';
+    return months[month - 1];
+  }
+
+  // ================================================================
   // BA ENTWICKLUNG / TREND
   // ================================================================
 
@@ -1343,6 +1963,148 @@ class QSAnalyzer {
       buffer.writeln(
         '${_formatMonth(month)}: '
         '${rates[month]!.toStringAsFixed(1)} % n.i.O.',
+      );
+    }
+
+    return QSAnalysisResult(buffer.toString());
+  }
+
+  QSAnalysisResult _dimensionEntwicklung(
+    String dimension,
+    int? year,
+  ) {
+    final data = _filterByYear(year)
+        .toList()
+      ..sort(
+        (a, b) => a.datum.compareTo(b.datum),
+      );
+
+    if (data.isEmpty) {
+      return QSAnalysisResult(
+        'Es sind keine Messdaten verfügbar'
+        '${year != null ? ' ($year)' : ''}.',
+      );
+    }
+
+    final monthly = <String, List<Measurement>>{};
+
+    for (final m in data) {
+      final key =
+          '${m.datum.year}-'
+          '${m.datum.month.toString().padLeft(2, '0')}';
+
+      monthly.putIfAbsent(key, () => []).add(m);
+    }
+
+    final months = monthly.keys.toList()..sort();
+
+    if (months.length < 2) {
+      return QSAnalysisResult(
+        'Für $dimension gibt es zu wenige Zeitpunkte '
+        'für eine aussagekräftige Entwicklung. '
+        'Gefunden wurden ${data.length} Messungen.',
+      );
+    }
+
+    final scores = <String, double>{};
+
+    for (final month in months) {
+      final metric = _dimensionMetrics(
+        monthly[month]!,
+        dimension,
+      );
+
+      scores[month] = metric.score;
+    }
+
+    final firstWindow = months.take(3).toList();
+    final lastWindow = months.reversed.take(3).toList();
+
+    final firstAverage = firstWindow
+            .map((m) => scores[m]!)
+            .fold<double>(0, (sum, value) => sum + value) /
+        firstWindow.length;
+
+    final lastAverage = lastWindow
+            .map((m) => scores[m]!)
+            .fold<double>(0, (sum, value) => sum + value) /
+        lastWindow.length;
+
+    final difference = lastAverage - firstAverage;
+
+    String trend;
+
+    if (dimension == 'ΔE*') {
+      if (difference <= -0.10) {
+        trend = 'verbessert';
+      } else if (difference >= 0.10) {
+        trend = 'verschlechtert';
+      } else {
+        trend = 'weitgehend stabil';
+      }
+    } else {
+      if (difference <= -2.0) {
+        trend = 'verbessert';
+      } else if (difference >= 2.0) {
+        trend = 'verschlechtert';
+      } else {
+        trend = 'weitgehend stabil';
+      }
+    }
+
+    final buffer = StringBuffer();
+
+    buffer.writeln(
+      'Entwicklung $dimension über die Zeit',
+    );
+
+    if (year != null) {
+      buffer.writeln('Zeitraum: $year');
+    } else {
+      buffer.writeln(
+        'Zeitraum: ${_formatDate(data.first.datum)} '
+        'bis ${_formatDate(data.last.datum)}',
+      );
+    }
+
+    buffer.writeln();
+    buffer.writeln(
+      'Gesamt: ${data.length} Messungen',
+    );
+
+    buffer.writeln();
+    buffer.writeln(
+      'Trend: Die Situation hat sich $trend.',
+    );
+
+    buffer.writeln(
+      'Durchschnitt der ersten drei Monate: '
+      '${_formatMetricScore(firstAverage, dimension)}',
+    );
+
+    buffer.writeln(
+      'Durchschnitt der letzten drei Monate: '
+      '${_formatMetricScore(lastAverage, dimension)}',
+    );
+
+    if (difference.abs() >= 0.1) {
+      final direction =
+          difference < 0 ? 'gesunken' : 'gestiegen';
+
+      buffer.writeln(
+        'Veränderung: '
+        '${difference.abs().toStringAsFixed(1)} '
+        '${dimension == 'ΔE*' ? '' : 'Prozentpunkte '}$direction.',
+      );
+    }
+
+    buffer.writeln();
+    buffer.writeln('Monatliche Entwicklung:');
+
+    for (final month in months) {
+      buffer.writeln(
+        '${_formatMonth(month)}: '
+        '${_formatMetricScore(scores[month]!, dimension)}',
       );
     }
 

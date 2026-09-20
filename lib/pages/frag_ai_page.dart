@@ -191,10 +191,16 @@ class _FragAIPageState extends State<FragAIPage> {
                   'Welche Artikel haben die meisten Abweichungen?',
                 ),
                 _suggestion(
-                  'Welche Messungen sind außerhalb der Toleranz?',
+                  'Wie entwickelt sich die Farbe bei Artikel 100024 im Jahr 2026?',
                 ),
                 _suggestion(
-                  'Wie entwickelt sich ΔE* über die Zeit?',
+                  'Wie war die Farbe bei Artikel 100024 im März 2026?',
+                ),
+                _suggestion(
+                  'Vergleiche Artikel 100024 und 100016.',
+                ),
+                _suggestion(
+                  'Wie hat sich BA 1001 im Jahr 2025 entwickelt?',
                 ),
               ],
             ),
