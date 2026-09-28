@@ -20,6 +20,7 @@ The application uses several terms commonly found in German manufacturing and Qu
 
 | Term | Meaning | Description |
 |------|---------|-------------|
+| **QS** | *Qualitätssicherung* | German term for Quality Assurance (QA). The application name **QS App** reflects its original industrial context. |   
 | **BA / BA-Nr.** | *Betriebsauftrag* (Production Order) | Identifies a specific production order or batch. Measurements belonging to the same BA can be grouped and analyzed together. |
 | **i.O.** | *in Ordnung* | Measurement is within the defined tolerances. Equivalent to **OK**. |
 | **n.i.O.** | *nicht in Ordnung* | Measurement is outside one or more defined tolerances. Equivalent to **NOK (Not OK)**. |
