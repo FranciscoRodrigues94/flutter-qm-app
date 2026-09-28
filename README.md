@@ -36,31 +36,31 @@ The application uses several terms commonly found in German manufacturing and Qu
 
 Overview of measurement activity, quality results, monthly development and articles with the highest number of non-conforming measurements.
 
-![QS App Dashboard](docs/screenshots/Dashboard.png)
+![QS App Dashboard](docs/Screenshots/Dashboard.png)
 
 ### Measurement Data
 
 Searchable and filterable overview of individual color measurements.
 
-![QS App Measurements](docs/screenshots/Messungen.png)
+![QS App Measurements](docs/Screenshots/Messungen.png)
 
 ### Measurement Details
 
 Detailed inspection of an individual measurement, including CIELAB values, deviations, reference values and tolerance information.
 
-![QS App Measurement Details](docs/screenshots/Messungsdetails.png)
+![QS App Measurement Details](docs/Screenshots/Messungsdetails.png)
 
 ### Analysis
 
 Time-based analysis of measurement characteristics with production-order filtering and tolerance visualization.
 
-![QS App Analysis](docs/screenshots/Analyse_b.png)
+![QS App Analysis](docs/Screenshots/Analyse_b.png)
 
 ### Frag AI
 
 Natural-language interface for querying and analyzing the fictional measurement dataset.
 
-![QS App Frag AI](docs/screenshots/KI_Analyse.png)
+![QS App Frag AI](docs/Screenshots/KI_Analyse.png)
 
 ---
 
