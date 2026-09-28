@@ -14,6 +14,21 @@ The prototype later served as the foundation for an internal implementation conn
 
 ---
 
+## Domain Terminology
+
+The application uses several terms commonly found in German manufacturing and Quality Management environments:
+
+| Term | Meaning | Description |
+|------|---------|-------------|
+| **BA / BA-Nr.** | *Betriebsauftrag* (Production Order) | Identifies a specific production order or batch. Measurements belonging to the same BA can be grouped and analyzed together. |
+| **i.O.** | *in Ordnung* | Measurement is within the defined tolerances. Equivalent to **OK**. |
+| **n.i.O.** | *nicht in Ordnung* | Measurement is outside one or more defined tolerances. Equivalent to **NOK (Not OK)**. |
+| **Artikelnummer** | Article Number | Identifies the manufactured part or product. Multiple production orders (BAs) can belong to the same article. |
+| **Messung** | Measurement | A recorded color measurement for a manufactured part. |
+| **Bezug / Standard** | Reference / Standard | The reference color values against which a measurement is evaluated. |
+
+---
+
 ## Main Features
 
 ### Dashboard
