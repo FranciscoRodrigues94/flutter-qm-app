@@ -20,13 +20,47 @@ The application uses several terms commonly found in German manufacturing and Qu
 
 | Term | Meaning | Description |
 |------|---------|-------------|
-| **QS** | *Qualitätssicherung* | German term for Quality Assurance (QA). The application name **QS App** reflects its original industrial context. |   
+| **QS** | *Qualitätssicherung* | German term for Quality Assurance (QA). The application name **QS App** reflects its original industrial context. |
 | **BA / BA-Nr.** | *Betriebsauftrag* (Production Order) | Identifies a specific production order or batch. Measurements belonging to the same BA can be grouped and analyzed together. |
 | **i.O.** | *in Ordnung* | Measurement is within the defined tolerances. Equivalent to **OK**. |
 | **n.i.O.** | *nicht in Ordnung* | Measurement is outside one or more defined tolerances. Equivalent to **NOK (Not OK)**. |
 | **Artikelnummer** | Article Number | Identifies the manufactured part or product. Multiple production orders (BAs) can belong to the same article. |
 | **Messung** | Measurement | A recorded color measurement for a manufactured part. |
 | **Bezug / Standard** | Reference / Standard | The reference color values against which a measurement is evaluated. |
+
+---
+
+## Application Preview
+
+### Dashboard
+
+Overview of measurement activity, quality results, monthly development and articles with the highest number of non-conforming measurements.
+
+![QS App Dashboard](docs/screenshots/Dashboard.png)
+
+### Measurement Data
+
+Searchable and filterable overview of individual color measurements.
+
+![QS App Measurements](docs/screenshots/Messungen.png)
+
+### Measurement Details
+
+Detailed inspection of an individual measurement, including CIELAB values, deviations, reference values and tolerance information.
+
+![QS App Measurement Details](docs/screenshots/Messungsdetails.png)
+
+### Analysis
+
+Time-based analysis of measurement characteristics with production-order filtering and tolerance visualization.
+
+![QS App Analysis](docs/screenshots/Analyse_b.png)
+
+### Frag AI
+
+Natural-language interface for querying and analyzing the fictional measurement dataset.
+
+![QS App Frag AI](docs/screenshots/KI_Analyse.png)
 
 ---
 
