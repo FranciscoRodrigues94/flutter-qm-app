@@ -335,7 +335,7 @@ class _MessungenPageState extends State<MessungenPage> {
 
               Expanded(
                 child: DropdownButtonFormField<String>(
-                  value: selectedErgebnis,
+                  initialValue: selectedErgebnis,
                   decoration: InputDecoration(
                     labelText: 'Ergebnis',
                     border: OutlineInputBorder(

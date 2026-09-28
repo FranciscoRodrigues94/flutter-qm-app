@@ -684,9 +684,6 @@ class LabChartPainter extends CustomPainter {
     final bool abInside =
         aInside && bInside;
 
-    final bool allInside =
-        lInside && abInside;
-
     // Punkt im a*/b* Diagramm:
     //
     // a*/b* OK + L* OK    -> grün

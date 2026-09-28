@@ -758,7 +758,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     physics:
                         const NeverScrollableScrollPhysics(),
                     itemCount: top5.length,
-                    separatorBuilder: (_, __) =>
+                    separatorBuilder: (_, _) =>
                         const Divider(height: 1),
                     itemBuilder: (context, index) {
                       final item = top5[index];

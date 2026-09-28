@@ -90,7 +90,7 @@ class _AnalysePageState extends State<AnalysePage> {
       return DateTime(2025, 1, 1);
     }
     return _measurements
-        .map((m) => m.datum as DateTime)
+        .map((m) => m.datum)
         .reduce((a, b) => a.isBefore(b) ? a : b);
   }
 
@@ -99,7 +99,7 @@ class _AnalysePageState extends State<AnalysePage> {
       return DateTime(2026, 9, 8);
     }
     return _measurements
-        .map((m) => m.datum as DateTime)
+        .map((m) => m.datum)
         .reduce((a, b) => a.isAfter(b) ? a : b);
   }
 
@@ -142,7 +142,7 @@ class _AnalysePageState extends State<AnalysePage> {
       final baNr = m.baNr.toString();
       final benutzer = m.benutzer.toString();
       final status = m.status.toString().trim().toLowerCase();
-      final date = m.datum as DateTime;
+      final date = m.datum;
 
       final artikelMatch =
           selectedArtikel == 'Alle' || artikel == selectedArtikel;
@@ -164,7 +164,7 @@ class _AnalysePageState extends State<AnalysePage> {
           endMatch;
     }).toList();
 
-    result.sort((a, b) => (b.datum as DateTime).compareTo(a.datum as DateTime));
+    result.sort((a, b) => b.datum.compareTo(a.datum));
     return result;
   }
 
@@ -254,7 +254,7 @@ class _AnalysePageState extends State<AnalysePage> {
     return SizedBox(
       width: 220,
       child: DropdownButtonFormField<String>(
-        value: value,
+        initialValue: value,
         isExpanded: true,
         decoration: InputDecoration(
           labelText: label,
@@ -314,37 +314,6 @@ class _AnalysePageState extends State<AnalysePage> {
               fontSize: 14,
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _toggle({
-    required String label,
-    required bool value,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(7),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Checkbox(
-              value: value,
-              onChanged: (_) => onTap(),
-              visualDensity: VisualDensity.compact,
-            ),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Color(0xFF334155),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
         ),
       ),
     );
@@ -537,9 +506,7 @@ class _AnalysePageState extends State<AnalysePage> {
         : data.where((m) => selectedMeasurements.contains(m)).toList();
 
     final bars = <LineChartBarData>[];
-    final showDots = chartData.length <= 80;
-    final useCurve = chartData.length <= 80;
-
+  
     void addSeries({
       required bool visible,
       required Color color,
@@ -633,13 +600,13 @@ class _AnalysePageState extends State<AnalysePage> {
                       HorizontalRangeAnnotation(
                         y1: bezugL - toleranzL,
                         y2: bezugL + toleranzL,
-                        color: const Color(0xFF22C55E).withOpacity(.09),
+                        color: const Color(0xFF22C55E).withValues(alpha: .09),
                       ),
                     if (showDeltaE)
                       HorizontalRangeAnnotation(
                         y1: 0,
                         y2: toleranzDeltaE,
-                        color: const Color(0xFF22C55E).withOpacity(.06),
+                        color: const Color(0xFF22C55E).withValues(alpha: .06),
                       ),
                   ],
                 ),
@@ -801,7 +768,7 @@ class _AnalysePageState extends State<AnalysePage> {
                         if (index < 0 || index >= chartData.length) {
                           return const SizedBox();
                         }
-                        final date = chartData[index].datum as DateTime;
+                        final date = chartData[index].datum;
                         return SideTitleWidget(
                           meta: meta,
                           child: Text(
@@ -837,7 +804,7 @@ class _AnalysePageState extends State<AnalysePage> {
                         }
 
                         return LineTooltipItem(
-                          '${formatDateTime(m.datum as DateTime)}\n'
+                          '${formatDateTime(m.datum)}\n'
                           '${m.artikelnummer}\n'
                           'BA-Nr.: ${m.baNr}\n'
                           '${labels.join('\n')}\n'
@@ -1161,7 +1128,7 @@ class _AnalysePageState extends State<AnalysePage> {
                                       SizedBox(
                                         width: 92,
                                         child: Text(
-                                          formatDate(m.datum as DateTime),
+                                          formatDate(m.datum),
                                           style: const TextStyle(
                                             fontSize: 11,
                                             color: Color(0xFF334155),
@@ -1537,19 +1504,8 @@ class _AnalysePageState extends State<AnalysePage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) {  
     final data = displayedMeasurements;
-
-    final validSelectedMeasurements = selectedMeasurements
-        .where((m) => data.contains(m))
-        .toSet();
-
-    final currentMeasurement =
-        data.contains(selectedMeasurement)
-            ? selectedMeasurement
-            : (validSelectedMeasurements.isNotEmpty
-                ? validSelectedMeasurements.last
-                : (data.isNotEmpty ? data.first : null));
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),

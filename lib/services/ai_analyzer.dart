@@ -1879,7 +1879,6 @@ class QSAnalyzer {
 
     final first = rates[months.first]!;
     final last = rates[months.last]!;
-    final difference = last - first;
 
     // Durchschnitt der ersten/letzten drei Monate, falls genügend
     // Daten vorhanden sind. Das macht den Trend weniger abhängig
